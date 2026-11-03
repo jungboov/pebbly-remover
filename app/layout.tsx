@@ -53,7 +53,9 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-touch-icon.png",
   },
-  appleWebApp: { capable: true, title: "pebbly remover", statusBarStyle: "black-translucent" },
+  // 홈 화면 바로가기 이름(안드로이드는 manifest의 short_name, 아이폰은 이 title) — 미러처럼 Pebbly Remover
+  applicationName: "Pebbly Remover",
+  appleWebApp: { capable: true, title: "Pebbly Remover", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {

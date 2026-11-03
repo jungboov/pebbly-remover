@@ -1,6 +1,6 @@
 {
-  "name": "pebbly remover",
-  "short_name": "remover",
+  "name": "Pebbly Remover",
+  "short_name": "Pebbly Remover",
   "description": "AI background remover — 100% in your browser. 브라우저에서 바로 배경 지우기.",
   "start_url": "/",
   "scope": "/",
