@@ -7,6 +7,7 @@
      no       번호 0~99                        name     로고 이름
      size     (w, h) => 로고 폭(px)            기본: 화면 폭 84% · 세로 1.1배 · 1000px 중 작은 것
      splash   첫 장면 배율. 'auto'(기본) = 안드로이드 12+에 설치한 앱이면 1.73(시스템 시작 화면이 아이콘을 띄우는 크기, 폴드8 녹화로 잼)
+              + standalone이면 상태바 절반만큼 올려서 시작(시작 화면 아이콘과 같은 자리)
      skip     누르거나 키를 누르면 바로 사라짐(기본 true). 누름은 root 밖으로 안 넘김(제품의 밀기·두 번 탭과 안 섞이게)
      T        시간 표(ms) 일부만 바꿀 때        onStart  펼쳐지기 시작할 때      onDone   다 사라진 뒤(기본: root를 지움)
      late     숫자가 멈춘 뒤 이름(기본 true). false = 예전 순서(펼쳐질 때 이름까지 다 나오고 스파인 칸에서 숫자가 돎)
@@ -53,18 +54,23 @@ function pebblyIntro(root, opts = {}) {
   let LW = 360;
   const measure = () => { const W = 110 + q('.pi-name').getComputedTextLength() + 14; LW = W + 34; q('.pi-corner').setAttribute('d', `M${W} 18H${W + 14}V32M${W} 102H${W + 14}V88`); };
   // 상자: 초타원 |x/a|^n + |y/b|^n = 1 — 앱 아이콘 모양(n 2.7)에서 거의 네모(n 16)인 스파인 테두리로
-  const sq = (a, b, n, cx) => { let d = ''; for (let i = 0; i < 64; i++) { const t = i / 32 * Math.PI, c = Math.cos(t), s = Math.sin(t);
-    d += (i ? 'L' : 'M') + (cx + a * Math.sign(c) * Math.abs(c) ** (2 / n)).toFixed(1) + ' ' + (b * Math.sign(s) * Math.abs(s) ** (2 / n)).toFixed(1); } return d + 'Z'; };
+  const sq = (a, b, n, cx, cy = 0) => { let d = ''; for (let i = 0; i < 64; i++) { const t = i / 32 * Math.PI, c = Math.cos(t), s = Math.sin(t);
+    d += (i ? 'L' : 'M') + (cx + a * Math.sign(c) * Math.abs(c) ** (2 / n)).toFixed(1) + ' ' + (cy + b * Math.sign(s) * Math.abs(s) ** (2 / n)).toFixed(1); } return d + 'Z'; };
   const io = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   // 릴 감속: cubic-bezier(.12,.62,.22,1)
   const bez = (x1, y1, x2, y2) => x => { let t = x; for (let i = 0; i < 8; i++) { const f = 3 * x1 * t * (1 - t) ** 2 + 3 * x2 * t * t * (1 - t) + t ** 3 - x, d = 3 * x1 * (1 - t) ** 2 + 6 * (x2 - x1) * t * (1 - t) + 3 * (1 - x2) * t * t; if (Math.abs(d) < 1e-6) break; t -= f / d; } t = Math.min(1, Math.max(0, t)); return 3 * y1 * t * (1 - t) ** 2 + 3 * y2 * t * t * (1 - t) + t ** 3; };
   const roll = bez(.12, .62, .22, 1), part = (p, a, b) => Math.max(0, Math.min(1, (p - a) / (b - a)));
   // 첫 장면 배율: 안드로이드 12+ 설치 앱은 시스템 시작 화면이 아이콘을 크게 띄우므로 그 크기에서 시작해야 넘어갈 때 상자가 갑자기 줄지 않음
-  let s = typeof splash === 'number' ? splash : 1, started = 0;
+  // 첫 장면 높이(dy): 시작 화면은 아이콘을 화면 전체 가운데에 두는데, standalone 앱은 상태바 아래만 쓰므로 그 가운데가 상태바 절반만큼 아래
+  //   → 상태바 절반만큼 올려서 시작하고 펼쳐지는 동안 가운데로 내려옴(00 녹화로 잼: 상태바 48px, 24px 어긋나 아이콘이 한 번 더 나오는 듯 보였음)
+  //   상태바 = 화면 높이 − 보이는 높이(아래 내비게이션 바는 제스처라 0). 64px 넘게 차이 나면(버튼식 내비게이션 바) 셈이 안 맞아 그대로. fullscreen(미러)은 0
+  let s = typeof splash === 'number' ? splash : 1, dy = 0, started = 0;
   if (splash === 'auto' && /Android/.test(navigator.userAgent) && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
     s = 1.73;
+    const gap = screen.height - innerHeight;
+    if (gap > 0 && gap <= 64) dy = -gap / 2;
     if (navigator.userAgentData) navigator.userAgentData.getHighEntropyValues(['platformVersion'])
-      .then(v => { if (!started && parseInt(v.platformVersion) < 12) { s = 1; render(0); } }).catch(() => {});
+      .then(v => { if (!started && parseInt(v.platformVersion) < 12) { s = 1; dy = 0; render(0); } }).catch(() => {});
   }
   function render(t) {
     const k = size(root.clientWidth, root.clientHeight) / LW;
@@ -72,15 +78,15 @@ function pebblyIntro(root, opts = {}) {
     const r = late ? io(part(t, SPIN + T.spin, SHOWN)) : 1, lx = -48 * k + (48 - LW / 2) * k * r;
     lock.setAttribute('transform', `translate(${lx} ${-60 * k}) scale(${k})`);
     const p = part(t, T.hold, T.hold + T.morph), e = io(p);
-    const A = { a: 59.5 * s, b: 59.5 * s, n: 2.7, sw: 7.5 * s, tx: .15 * s, ty: 13.4 * s, fs: 38 * s, x: 0 }, B = { a: 28 * k, b: 42 * k, n: 16, sw: 2.8 * k, tx: 0, ty: 4 * k, fs: 12.5 * k, x: lx + 48 * k };
+    const A = { a: 59.5 * s, b: 59.5 * s, n: 2.7, sw: 7.5 * s, tx: .15 * s, ty: 13.4 * s, fs: 38 * s, x: 0, y: dy }, B = { a: 28 * k, b: 42 * k, n: 16, sw: 2.8 * k, tx: 0, ty: 4 * k, fs: 12.5 * k, x: lx + 48 * k, y: 0 };
     const v = key => A[key] + (B[key] - A[key]) * e;
-    box.setAttribute('d', sq(v('a'), v('b'), v('n'), v('x'))); box.setAttribute('stroke-width', v('sw')); box.style.opacity = 1 - part(p, .6, 1);   // 끝 무렵 옆선이 사라지고
+    box.setAttribute('d', sq(v('a'), v('b'), v('n'), v('x'), v('y'))); box.setAttribute('stroke-width', v('sw')); box.style.opacity = 1 - part(p, .6, 1);   // 끝 무렵 옆선이 사라지고
     bars.style.opacity = part(p, .55, 1);                                       // 위아래 막대만 남음
     const show = late ? part(t, SPIN + T.spin + T.reveal * .25, SHOWN) : 0;
     rest.forEach(n => { n.style.opacity = late ? show : part(p, .45, 1); });    // 점선·꺾쇠
     word.style.opacity = late ? show : part(p, .62, 1);                         // 이름은 상자가 비켜난 뒤에(late: 숫자가 멈춘 뒤에)
     t0.style.display = p >= 1 ? 'none' : ''; slot.style.opacity = p >= 1 ? 1 : 0;   // 다 오면 굴러가는 [ NN ]으로 바꿔 끼움(같은 자리·크기)
-    t0.setAttribute('x', v('x') + v('tx')); t0.setAttribute('y', v('ty')); t0.style.fontSize = v('fs') + 'px';
+    t0.setAttribute('x', v('x') + v('tx')); t0.setAttribute('y', v('y') + v('ty')); t0.style.fontSize = v('fs') + 'px';
     const i = 1 + 100 * roll(part(t, SPIN, SPIN + T.spin));
     reels.forEach(g => g.setAttribute('transform', `translate(0 ${(-i * ROW).toFixed(2)})`));
     root.style.opacity = 1 - part(t, T.total - T.out, T.total);

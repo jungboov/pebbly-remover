@@ -75,7 +75,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: bootScript }} />
         {/* 공용 번호 인트로 부품(_brand/intro 원본의 사본, 고치지 말 것 — sync.py가 사본·?v=를 맞춤). Intro.tsx보다 먼저 있어야 해서 동기로 */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/pebbly-intro.js?v=6369c692"></script>
+        <script src="/pebbly-intro.js?v=8aa45e44"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         {/* 로고·숫자: MuseoModerno(이름 400 · 스파인 500 · [ 01 ] 600), 한글: Pretendard */}
