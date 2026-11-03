@@ -4,8 +4,10 @@
 pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(toolkit.pebblylabs.com/pixel-remover).
 
 - 주소: remover.pebblylabs.com (pebblylabs.com/01 → 여기)
-- 기능: 여러 장(한 번에 10장, 2장씩 동시에) 배경 지우기 · 원본/결과 비교 막대 · 썸네일 골라 ZIP·낱장 받기 · 지금 결과 받기 · 한/영
-- 지우기: [@imgly/background-removal](https://github.com/imgly/background-removal-js) (isnet 모델, CPU 1스레드 — 모델은 처음에 그쪽 CDN에서 받아 브라우저가 보관)
+- 기능: 여러 장(한 번에 10장까지 줄 세워 한 장씩) 배경 지우기 · 원본/결과 비교 막대 · 썸네일 골라 ZIP·낱장 받기 · 지금 결과 받기 · 한/영 · PNG·JPEG·WebP 말고도 브라우저가 여는 그림(GIF·AVIF·BMP)
+- 지우기: [@imgly/background-removal](https://github.com/imgly/background-removal-js) — isnet_fp16 모델(88MB, fp32 176MB와 결과 같음. quint8 44MB는 배경과 색이 비슷한 사진에서 깨져서 안 씀) + wasm 12MB를 처음에 그쪽 CDN에서 받아 브라우저가 보관
+  - 여러 코어: `public/_headers`의 교차 출처 격리(COOP·COEP) 머리글이 있어야 스레드가 켜짐(없으면 1스레드, 이 PC에서 2장 18초 → 3.7초). 밖에서 불러오는 것을 더하면 그쪽이 `Cross-Origin-Resource-Policy: cross-origin`(또는 CORS)을 보내는지 확인
+  - 지우는 동안(사진 한 장에 2초쯤) 화면이 멈춤 — 라이브러리가 CPU에선 화면 스레드에서만 돌아서. 아예 안 멈추게 하려면 웹 워커로 옮겨야 함
 
 ## 화면 (pebbly labs 브랜드)
 - 온라인 제품은 평면: 검은 바탕에 흰 선 (색은 미러와 같은 값, `app/globals.css`)

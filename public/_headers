@@ -1,0 +1,6 @@
+# Cloudflare Workers 정적 자산 머리글 (wrangler가 out/_headers를 읽음, 파일 자체는 안 보냄)
+# 교차 출처 격리: 이게 있어야 브라우저가 배경 지우기를 여러 코어로 돌림(SharedArrayBuffer) — 없으면 1스레드로 떨어짐
+# 밖에서 받는 것(Google Fonts·jsdelivr·staticimgly 모델·Cloudflare 통계)은 모두 Cross-Origin-Resource-Policy: cross-origin을 보내서 막히지 않음
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
