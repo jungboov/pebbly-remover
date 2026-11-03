@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { removeBackground, preload, Config } from '@imgly/background-removal';
 import JSZip from 'jszip';
+import { MODEL_BYTES, type Progress } from '../_lib/imgly';
+import { createEngine, type Engine } from '../_lib/engine';
 
 export interface BatchItem {
   id: string;
@@ -17,23 +18,6 @@ export interface BatchItem {
 
 // 한 번에 기다릴 수 있는 사진 수(처리 중 + 줄 선 것)
 export const MAX_BATCH = 10;
-
-// 모델: isnet_fp16 — isnet(fp32, 176MB)과 결과가 같고(사진 4장 비교, 가장자리 평균 차이 0.06/255) 받는 양이 절반.
-// isnet_quint8(44MB)은 배경과 색이 비슷한 사진에서 배경이 남고 물체에 구멍이 나서 안 씀
-// 처음 받는 양 = 모델 88.2MB + onnxruntime wasm 11.8MB (staticimgly CDN, 브라우저가 1년 보관)
-export const MODEL_MB = 100;
-const MODEL_BYTES = 99_998_062;
-
-// imgly는 PNG·JPEG·WebP만 받음 → 그 밖(GIF·AVIF·BMP…)은 형식을 지워서 넘기면 브라우저가 풀어 줌(createImageBitmap)
-const DIRECT = /^image\/(png|jpe?g|webp)$/;
-const toSource = (file: File): Blob => DIRECT.test(file.type) ? file : new Blob([file], { type: 'application/octet-stream' });
-
-type Progress = (key: string, current: number, total: number) => void;
-
-// attempt: imgly가 설정별로 모델 받기를 기억해 둠(실패도) → 다시 받을 때 값을 바꿔서 새로 받게
-function makeConfig(attempt: number, progress: Progress) {
-  return { model: 'isnet_fp16', device: 'cpu', progress, attempt } as Config & { attempt: number };
-}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -67,14 +51,14 @@ export function useBatchProcessor() {
   const runningRef = useRef(false);
   const currentRef = useRef<string | null>(null);
 
-  // 진행: imgly는 처음 받은 설정의 progress만 계속 부름 → 늘 같은 함수를 넘기고 거기서 단계별로 나눔
-  //   fetch:* = 모델·wasm 받기(받은 바이트 합), compute:* = 지금 사진(decode 0/4 → encode 4/4)
+  // 지우기는 웹 워커에서(engine.ts — 안 되는 브라우저는 화면 스레드). 처음 쓸 때 만듦
+  // 진행: 늘 같은 함수로 받아서 단계별로 나눔 — fetch:* = 모델·wasm 받기(받은 바이트 합), compute:* = 지금 사진(decode 0/4 → encode 4/4)
   const downloadedRef = useRef(new Map<string, number>());
   const progressRef = useRef<Progress>(() => {});
-  const configRef = useRef<ReturnType<typeof makeConfig> | null>(null);
+  const engineRef = useRef<Engine | null>(null);
   const attemptRef = useRef(0);
   const modelFailedRef = useRef(false);
-  const getConfig = () => (configRef.current ??= makeConfig(attemptRef.current, (k, c, t) => progressRef.current(k, c, t)));
+  const getEngine = () => (engineRef.current ??= createEngine((k, c, t) => progressRef.current(k, c, t)));
 
   useEffect(() => {
     progressRef.current = (key, current, total) => {
@@ -106,13 +90,12 @@ export function useBatchProcessor() {
       if (modelFailedRef.current) {
         modelFailedRef.current = false;
         attemptRef.current += 1;
-        configRef.current = null;
         downloadedRef.current.clear();
         setModelProgress(0);
       }
       setModelStatus(prev => prev === 'ready' ? prev : 'loading');
       try {
-        await preload(getConfig());
+        await getEngine().preload(attemptRef.current);
       } catch (e) {
         console.error("모델 오류:", e);
         modelFailedRef.current = true;
@@ -128,7 +111,7 @@ export function useBatchProcessor() {
         currentRef.current = id;
         patchItem(id, { status: 'processing', progress: 0, startedAt: Date.now() });
         try {
-          const resultBlob = await removeBackground(toSource(file), getConfig());
+          const resultBlob = await getEngine().run(file, attemptRef.current);
           if (!filesRef.current.has(id)) continue;   // 처리 중에 비움
           const url = URL.createObjectURL(resultBlob);
           lastCompletedIdRef.current = id;

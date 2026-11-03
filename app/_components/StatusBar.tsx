@@ -1,5 +1,5 @@
 import { T } from './T';
-import { MODEL_MB } from '../_hooks/useBatchProcessor';
+import { MODEL_MB } from '../_lib/imgly';
 
 interface StatusBarProps {
   modelStatus: 'idle' | 'loading' | 'ready' | 'error';
