@@ -3,11 +3,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import JSZip from 'jszip';
 import { createEngine, type Engine } from '../_lib/engine';
+import { makeThumb } from '../_lib/thumbs';
 
 export interface BatchItem {
   id: string;
   original: string;
-  thumb?: string;   // 썸네일용 작은 그림(만들기 전·못 만들면 original)
+  thumb?: string;   // 썸네일용 작은 그림 — 만들기 전엔 빈 칸(원본 10장을 그대로 띄우면 풀고 그리느라 화면이 멈춤), 못 만들면 original
   processed: string | null;
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress: number;
@@ -25,21 +26,6 @@ function pad2(n: number): string {
 
 function formatTimestamp(d: Date): string {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
-}
-
-// 썸네일: 가로 192px로 줄여 풀고(EXIF 방향 맞춤) JPEG로 — 12MP 사진 10장을 그대로 72px에 띄우면 GPU 쪽에서만 340MB를 씀
-// 풀기는 브라우저가 화면 스레드 밖에서. 한 장씩(10장을 한꺼번에 풀면 잠깐 원본 크기 × 10만큼 메모리가 튐)
-async function makeThumb(file: Blob): Promise<string | undefined> {
-  try {
-    const bmp = await createImageBitmap(file, { resizeWidth: 192, resizeQuality: 'medium' });
-    const c = Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
-    c.getContext('2d')!.drawImage(bmp, 0, 0);
-    bmp.close();
-    const b = await new Promise<Blob | null>(r => c.toBlob(r, 'image/jpeg', 0.85));
-    return b ? URL.createObjectURL(b) : undefined;
-  } catch {
-    return undefined;   // 못 풀면 원본 그대로(지우기에서 오류가 남)
-  }
 }
 
 function singleFileName(originalName: string): string {
@@ -210,9 +196,8 @@ export function useBatchProcessor() {
       thumbsRef.current = thumbsRef.current.then(async () => {
         const file = filesRef.current.get(it.id);
         const thumb = file && await makeThumb(file);
-        if (!thumb) return;
-        if (!filesRef.current.has(it.id)) { URL.revokeObjectURL(thumb); return; }   // 그새 비움
-        patchItem(it.id, { thumb });
+        if (!filesRef.current.has(it.id)) { if (thumb) URL.revokeObjectURL(thumb); return; }   // 그새 비움
+        patchItem(it.id, { thumb: thumb ?? it.original });
       });
     }
   };
@@ -335,7 +320,7 @@ export function useBatchProcessor() {
     filesRef.current.clear();
     batchItems.forEach(item => {
       URL.revokeObjectURL(item.original);
-      if (item.thumb) URL.revokeObjectURL(item.thumb);
+      if (item.thumb && item.thumb !== item.original) URL.revokeObjectURL(item.thumb);
       if (item.processed) URL.revokeObjectURL(item.processed);
     });
     setBatchItems([]);

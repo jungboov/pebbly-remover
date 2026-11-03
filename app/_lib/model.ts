@@ -15,13 +15,13 @@ export type Progress = (loaded: number, total: number) => void;
 export type Model = { device: Device; segment: (input: Float32Array) => Promise<Float32Array> };
 type Entry = { size: number; chunks: { name: string; offsets: [number, number] }[] };
 
-// GPU는 1024 한 장 0.1초(이 PC RTX 4060, CPU 16스레드는 2.3초)라 되면 GPU로, 안 되면 CPU.
-// wasm은 그쪽에 맞는 것 하나만 받음: CPU 11.8MB · GPU(jsep) 23.0MB
-const FILES = {
-  model: '/models/isnet_fp16',
-  cpu: ['/onnxruntime-web/ort-wasm-simd-threaded.wasm', '/onnxruntime-web/ort-wasm-simd-threaded.mjs'],
-  gpu: ['/onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm', '/onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs'],
-} as const;
+const FILES = { model: '/models/isnet_fp16' } as const;
+// GPU는 1024 한 장 0.1초(이 PC RTX 4060, CPU 16스레드는 2.3초)라 되면 GPU로, 안 되면 CPU. wasm은 그쪽에 맞는 것 하나만.
+// wasm은 이 사이트에서(빌드가 _next/static/media에 넣음, 1년 보관): Cloudflare가 brotli로 줄여 보내서 CPU 12.7 → 2.3MB, GPU 23.9 → 5.0MB
+// (imgly CDN은 안 줄임). onnxruntime JS와 판도 꼭 맞음
+const WASM_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', import.meta.url);
+const GLUE_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs', import.meta.url);
+const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm', import.meta.url);
 
 async function get(url: string, size?: number): Promise<Uint8Array> {
   const cache = typeof caches === 'undefined' ? null : await caches.open(CACHE).catch(() => null);
@@ -68,20 +68,20 @@ async function gpuUsable(prefer: Prefer): Promise<boolean> {
 
 async function open(device: Device, onProgress: Progress): Promise<Model> {
   const man = await entries();
-  const [wasmKey, mjsKey] = FILES[device];
-  const total = man[FILES.model].size + man[wasmKey].size + man[mjsKey].size;
+  const total = man[FILES.model].size;
   let loaded = 0;
-  const tick = (n: number) => onProgress((loaded += n), total);
   onProgress(0, total);
-  const [model, wasm, mjs] = await Promise.all([load(FILES.model, tick), load(wasmKey, tick), load(mjsKey, tick)]);
+  const [model, wasm] = await Promise.all([
+    load(FILES.model, n => onProgress((loaded += n), total)),
+    get(String(device === 'gpu' ? WASM_GPU : WASM_CPU)),
+  ]);
 
   const ort = device === 'gpu' ? await import('onnxruntime-web/webgpu') : await import('onnxruntime-web/wasm');
   // 스레드: 코어 수만큼(이 PC 16 → 2.3초, 8 → 2.7초, 4 → 4.0초). 교차 출처 격리가 없으면 onnxruntime이 1로 내림
   ort.env.wasm.numThreads = Math.min(16, navigator.hardwareConcurrency || 4);
-  ort.env.wasm.wasmPaths = {
-    wasm: URL.createObjectURL(new Blob([wasm as BlobPart], { type: 'application/wasm' })),
-    mjs: URL.createObjectURL(new Blob([mjs as BlobPart], { type: 'text/javascript' })),
-  };
+  // 받아 둔 wasm은 blob 주소로 넘김(예전 라이브러리와 같은 방식). GPU 쪽 JS는 glue(mjs)를 안에 품고 있음
+  const wasmUrl = URL.createObjectURL(new Blob([wasm as BlobPart], { type: 'application/wasm' }));
+  ort.env.wasm.wasmPaths = device === 'cpu' ? { wasm: wasmUrl, mjs: String(GLUE_CPU) } : { wasm: wasmUrl };
   // CPU는 parallel: 지운 뒤 남는 메모리가 sequential보다 200MB 적음(782 → 583MB, 속도는 같음 — 예전 라이브러리도 이렇게 씀)
   const session: InferenceSession = await ort.InferenceSession.create(model, {
     executionProviders: [device === 'gpu' ? 'webgpu' : 'wasm'],
@@ -89,13 +89,13 @@ async function open(device: Device, onProgress: Progress): Promise<Model> {
     ...(device === 'cpu' && { executionMode: 'parallel' as const }),
   });
   const [inName] = session.inputNames, [outName] = session.outputNames;
-  return {
-    device,
-    async segment(input) {
-      const r = await session.run({ [inName]: new ort.Tensor('float32', input, [1, 3, SIZE, SIZE]) });
-      return r[outName].data as Float32Array;
-    },
+  const segment = async (input: Float32Array) => {
+    const r = await session.run({ [inName]: new ort.Tensor('float32', input, [1, 3, SIZE, SIZE]) });
+    return r[outName].data as Float32Array;
   };
+  // GPU는 처음 한 번 돌릴 때 셰이더를 만드느라 1.7초(그다음부터 0.1초) — 미리 열 때 빈 그림으로 한 번 돌려 둠
+  if (device === 'gpu') await segment(new Float32Array(3 * SIZE * SIZE));
+  return { device, segment };
 }
 
 // 모델 열기: GPU가 되면 GPU로, 열다가 안 되면 CPU로. 지우다가 GPU가 실패해도(장치 잃음 등) CPU로 바꿔 그 장부터 다시
