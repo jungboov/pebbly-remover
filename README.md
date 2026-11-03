@@ -20,9 +20,10 @@ npm run dev        # http://localhost:3000
 npm run build      # out/ 에 정적 파일
 ```
 
-## 배포 (Cloudflare Pages)
-- 빌드 명령 `npm run build`, 출력 폴더 `out`, 환경 변수 `NODE_VERSION=22`
-- 사용자 지정 도메인 `remover.pebblylabs.com`
+## 배포 (Cloudflare Workers — 정적 파일만)
+- Git 연결(jungboov/pebbly-remover, main): 빌드 명령 `npm run build`, 배포 명령 `npx wrangler deploy` — `wrangler.jsonc`가 `out/`을 올림
+- Node 22(`.nvmrc`). 빌드는 `next build --webpack`(배경 지우기 라이브러리 때문에 Turbopack 대신)
+- 사용자 지정 도메인 `remover.pebblylabs.com` (Worker › 설정 › 도메인 및 경로)
 
 ## 폴더
 - `app/page.tsx` 화면 틀 · `app/_hooks/useBatchProcessor.ts` 지우기·받기 · `app/_components/` 부품

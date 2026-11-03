@@ -21,3 +21,6 @@ next-env.d.ts
 .claude/settings.local.json
 /public/_test/
 /shots/
+
+# wrangler
+/.wrangler/

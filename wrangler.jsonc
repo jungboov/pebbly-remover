@@ -1,0 +1,10 @@
+// Cloudflare Workers(정적 파일만): Workers Builds가 `npm run build` 뒤 `npx wrangler deploy`로 out/을 그대로 올림
+// 서버 코드는 없음 — 배경 지우기는 전부 브라우저에서. 없는 주소는 out/404.html
+{
+  "name": "pebbly-remover",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page"
+  }
+}
