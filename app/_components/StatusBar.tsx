@@ -43,7 +43,7 @@ export function StatusBar({
       <div className="status" data-state="busy" aria-live="polite">
         <span className="dot" />
         <span className="st-label"><T ko="모델 준비 중" en="Loading model" /></span>
-        <span className="num st-dim">{modelProgress}% · 43MB</span>
+        <span className="st-dim"><span className="num">{modelProgress}%</span> · 43 MB</span>
         <Gauge value={modelProgress} />
       </div>
     );
