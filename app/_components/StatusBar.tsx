@@ -1,9 +1,9 @@
 import { T } from './T';
-import { MODEL_MB } from '../_lib/imgly';
 
 interface StatusBarProps {
   modelStatus: 'idle' | 'loading' | 'ready' | 'error';
   modelProgress: number;
+  modelMB: number;
   batchStatus: 'idle' | 'processing' | 'ready';
   batchStats: {
     completed: number;
@@ -34,6 +34,7 @@ function Gauge({ value }: { value: number }) {
 export function StatusBar({
   modelStatus,
   modelProgress,
+  modelMB,
   batchStatus,
   batchStats,
   overallPercentage,
@@ -44,7 +45,7 @@ export function StatusBar({
       <div className="status" data-state="busy" aria-live="polite">
         <span className="dot" />
         <span className="st-label"><T ko="모델 준비 중" en="Loading model" /></span>
-        <span className="st-dim"><span className="num">{modelProgress}%</span> · {MODEL_MB} MB</span>
+        <span className="st-dim"><span className="num">{modelProgress}%</span> · {modelMB} MB</span>
         <Gauge value={modelProgress} />
       </div>
     );

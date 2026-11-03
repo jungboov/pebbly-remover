@@ -4,3 +4,7 @@
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
+
+# 빌드 파일(_next/static)은 이름에 내용 해시가 들어가서 안 바뀜 → 1년 보관, 다시 묻지 않음
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable

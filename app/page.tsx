@@ -30,6 +30,8 @@ export default function Home() {
     isDownloading,
     modelStatus,
     modelProgress,
+    modelMB,
+    warmUp,
     selectedItem,
     batchStatus,
     batchStats,
@@ -42,6 +44,8 @@ export default function Home() {
     handleClearCache,
     handleRetryModel,
   } = useBatchProcessor();
+  // 파일 고르기를 열면 그동안 모델을 미리 받기 시작(폰은 이때가 처음)
+  const pickFiles = () => { warmUp(); fileInputRef.current?.click(); };
 
   return (
     <main className="app">
@@ -57,13 +61,14 @@ export default function Home() {
           selectedItem={selectedItem}
           compareSlider={compareSlider}
           onCompareChange={setCompareSlider}
-          onFileInputClick={() => fileInputRef.current?.click()}
+          onFileInputClick={pickFiles}
           onDownloadCurrent={handleDownloadCurrent}
         />
         <div className="side">
           <StatusBar
             modelStatus={modelStatus}
             modelProgress={modelProgress}
+            modelMB={modelMB}
             batchStatus={batchStatus}
             batchStats={batchStats}
             overallPercentage={overallPercentage}
@@ -78,7 +83,7 @@ export default function Home() {
               setCompareSlider(0);
               toggleSelection(id);
             }}
-            onAdd={() => fileInputRef.current?.click()}
+            onAdd={pickFiles}
             selectedCount={selectedCount}
             completedCount={completedCount}
             allCompletedSelected={allCompletedSelected}

@@ -75,7 +75,7 @@ export function ThumbnailStrip({
               data-view={isViewerActive}
               className="thumb"
             >
-              <img src={item.original} alt="" />
+              <img src={item.thumb ?? item.original} alt="" />
 
               {isViewerActive && <span className="th-view" aria-label={lang === 'ko' ? '보는 중' : 'Currently viewing'} />}
 

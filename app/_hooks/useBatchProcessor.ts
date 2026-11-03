@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import JSZip from 'jszip';
-import { MODEL_BYTES, type Progress } from '../_lib/imgly';
 import { createEngine, type Engine } from '../_lib/engine';
 
 export interface BatchItem {
   id: string;
   original: string;
+  thumb?: string;   // 썸네일용 작은 그림(만들기 전·못 만들면 original)
   processed: string | null;
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress: number;
@@ -27,6 +27,21 @@ function formatTimestamp(d: Date): string {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 }
 
+// 썸네일: 가로 192px로 줄여 풀고(EXIF 방향 맞춤) JPEG로 — 12MP 사진 10장을 그대로 72px에 띄우면 GPU 쪽에서만 340MB를 씀
+// 풀기는 브라우저가 화면 스레드 밖에서. 한 장씩(10장을 한꺼번에 풀면 잠깐 원본 크기 × 10만큼 메모리가 튐)
+async function makeThumb(file: Blob): Promise<string | undefined> {
+  try {
+    const bmp = await createImageBitmap(file, { resizeWidth: 192, resizeQuality: 'medium' });
+    const c = Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
+    c.getContext('2d')!.drawImage(bmp, 0, 0);
+    bmp.close();
+    const b = await new Promise<Blob | null>(r => c.toBlob(r, 'image/jpeg', 0.85));
+    return b ? URL.createObjectURL(b) : undefined;
+  } catch {
+    return undefined;   // 못 풀면 원본 그대로(지우기에서 오류가 남)
+  }
+}
+
 function singleFileName(originalName: string): string {
   const base = originalName.replace(/\.[^/.]+$/, '');
   return `pebbly-remover-${base}.png`;
@@ -41,6 +56,7 @@ export function useBatchProcessor() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [modelProgress, setModelProgress] = useState(0);
+  const [modelMB, setModelMB] = useState(100);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedIdRef = useRef<string | null>(null);
@@ -50,33 +66,38 @@ export function useBatchProcessor() {
   const queueRef = useRef<string[]>([]);
   const runningRef = useRef(false);
   const currentRef = useRef<string | null>(null);
+  const thumbsRef = useRef<Promise<void>>(Promise.resolve());
 
   // 지우기는 웹 워커에서(engine.ts — 안 되는 브라우저는 화면 스레드). 처음 쓸 때 만듦
-  // 진행: 늘 같은 함수로 받아서 단계별로 나눔 — fetch:* = 모델·wasm 받기(받은 바이트 합), compute:* = 지금 사진(decode 0/4 → encode 4/4)
-  const downloadedRef = useRef(new Map<string, number>());
-  const progressRef = useRef<Progress>(() => {});
+  // 진행: 모델 받기(받은 바이트 / 모델+wasm 전체) · 지금 사진(풀기 10 → 모델 입력 20 → 마스크 80 → 다 됨 100)
   const engineRef = useRef<Engine | null>(null);
-  const attemptRef = useRef(0);
   const modelFailedRef = useRef(false);
-  const getEngine = () => (engineRef.current ??= createEngine((k, c, t) => progressRef.current(k, c, t)));
-
-  useEffect(() => {
-    progressRef.current = (key, current, total) => {
-      if (key.startsWith('fetch:')) {
-        downloadedRef.current.set(key, current);
-        let sum = 0;
-        for (const v of downloadedRef.current.values()) sum += v;
-        setModelProgress(Math.min(100, Math.round((sum / MODEL_BYTES) * 100)));
-        return;
-      }
+  const getEngine = useCallback(() => (engineRef.current ??= createEngine(
+    (loaded, total) => {
+      setModelProgress(Math.min(100, Math.round((loaded / total) * 100)));
+      setModelMB(Math.round(total / 1e6));
+    },
+    p => {
       const id = currentRef.current;
-      if (!id || !key.startsWith('compute:')) return;
-      const p = Math.round((current / total) * 100);
-      setBatchItems(prev => prev.some(i => i.id === id && i.progress !== p)
-        ? prev.map(i => i.id === id ? { ...i, progress: p } : i)
-        : prev);
+      if (id) setBatchItems(prev => prev.some(i => i.id === id && i.progress !== p) ? prev.map(i => i.id === id ? { ...i, progress: p } : i) : prev);
+    },
+  )), []);
+
+  // 미리 열기: 사진을 넣기 전에 모델을 받아 열어 두면 첫 장을 바로 지움(실패는 여기선 조용히 — 사진을 넣으면 runQueue가 다시 해서 오류를 보여 줌)
+  // PC(마우스)는 인트로가 끝나고 쉴 때 바로, 폰·데이터 절약 모드는 넣으려는 뜻을 보일 때(＋·보기 창을 누름, 끌어 옴) — 보러만 온 폰에서 100MB를 쓰지 않게
+  const warmUp = useCallback(() => { getEngine().preload().catch(() => {}); }, [getEngine]);
+  useEffect(() => {
+    const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
+    if (saveData || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    let t = 0;
+    const wait = () => {
+      if (document.getElementById('intro')) { t = window.setTimeout(wait, 500); return; }
+      if ('requestIdleCallback' in window) requestIdleCallback(warmUp, { timeout: 3000 });
+      else warmUp();
     };
-  }, []);
+    t = window.setTimeout(wait, 500);
+    return () => clearTimeout(t);
+  }, [warmUp]);
 
   const patchItem = (id: string, patch: Partial<BatchItem>) =>
     setBatchItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
@@ -86,16 +107,14 @@ export function useBatchProcessor() {
     runningRef.current = true;
     try {
       // 모델부터: 못 받으면 모델 오류(사진은 그대로 기다림) — 사진 하나가 실패하면 그 사진만 오류
-      // 지난번에 못 받았으면(다시 · 사진을 더 넣음) 새 설정으로 처음부터
+      // 지난번에 못 받았으면(다시 · 사진을 더 넣음) 처음부터(받아 둔 조각은 저장소에 있어서 남은 것만 받음)
       if (modelFailedRef.current) {
         modelFailedRef.current = false;
-        attemptRef.current += 1;
-        downloadedRef.current.clear();
         setModelProgress(0);
       }
       setModelStatus(prev => prev === 'ready' ? prev : 'loading');
       try {
-        await getEngine().preload(attemptRef.current);
+        await getEngine().preload();
       } catch (e) {
         console.error("모델 오류:", e);
         modelFailedRef.current = true;
@@ -111,7 +130,7 @@ export function useBatchProcessor() {
         currentRef.current = id;
         patchItem(id, { status: 'processing', progress: 0, startedAt: Date.now() });
         try {
-          const resultBlob = await getEngine().run(file, attemptRef.current);
+          const resultBlob = await getEngine().run(file);
           if (!filesRef.current.has(id)) continue;   // 처리 중에 비움
           const url = URL.createObjectURL(resultBlob);
           lastCompletedIdRef.current = id;
@@ -187,6 +206,15 @@ export function useBatchProcessor() {
     setBatchItems(prev => [...prev, ...newItems]);
     if (selectedIndex === null) setSelectedIndex(startIdx);
     runQueue();
+    for (const it of newItems) {
+      thumbsRef.current = thumbsRef.current.then(async () => {
+        const file = filesRef.current.get(it.id);
+        const thumb = file && await makeThumb(file);
+        if (!thumb) return;
+        if (!filesRef.current.has(it.id)) { URL.revokeObjectURL(thumb); return; }   // 그새 비움
+        patchItem(it.id, { thumb });
+      });
+    }
   };
 
   // 끌어 놓기: 한 번만 붙이고, 놓을 때는 그때의 handleFiles를 부름
@@ -197,6 +225,7 @@ export function useBatchProcessor() {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(true);
+      warmUp();   // 끌어 오는 동안 모델 미리 받기(여러 번 불러도 한 번만 받음)
     };
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
@@ -220,7 +249,7 @@ export function useBatchProcessor() {
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("drop", handleDrop);
     };
-  }, []);
+  }, [warmUp]);
 
   const toggleSelection = (id: string) => {
     const item = batchItems.find(i => i.id === id);
@@ -306,6 +335,7 @@ export function useBatchProcessor() {
     filesRef.current.clear();
     batchItems.forEach(item => {
       URL.revokeObjectURL(item.original);
+      if (item.thumb) URL.revokeObjectURL(item.thumb);
       if (item.processed) URL.revokeObjectURL(item.processed);
     });
     setBatchItems([]);
@@ -378,6 +408,8 @@ export function useBatchProcessor() {
     isDownloading,
     modelStatus,
     modelProgress,
+    modelMB,
+    warmUp,
     selectedItem,
     batchStatus,
     batchStats,
