@@ -1,0 +1,203 @@
+/* pebbly remover — 온라인 제품은 평면: 검은 바탕에 흰 선 (색은 미러 theme.css와 같은 값)
+   로고·숫자는 MuseoModerno(--logo), 글자는 Pretendard(--ui) */
+:root{
+  --bg:#000;
+  --text:#fff;
+  --muted:#a3a3a3;
+  --dim:#5f5f5f;
+  --line:#1c1c1c;
+  --bd:#262626;
+  --panel:#0b0b0b;
+  --accent:#fff;
+  --on-accent:#000;
+  --bad:#ff6b6b;
+  /* 투명한 곳을 보여 주는 바둑판 */
+  --check-a:#141414;
+  --check-b:#1f1f1f;
+  --logo:"MuseoModerno","Pretendard Variable",Pretendard,sans-serif;
+  --ui:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text)}
+body{font-family:var(--ui);font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased;word-break:keep-all;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:disabled{cursor:default}
+a{color:inherit;text-decoration:none}
+img{display:block}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:var(--accent);color:var(--on-accent)}
+
+/* 한/영: 둘 다 그려 두고 <html lang>에 맞는 쪽만 (T.tsx) */
+html[lang=ko] .t-en, html:not([lang=ko]) .t-ko{display:none}
+
+/* 숫자(개수·퍼센트·시간)는 로고와 같은 글꼴 */
+.num{font-family:var(--logo);font-weight:500}
+
+
+/* ── 화면 틀: 폰은 위에서 아래로, PC는 보기 창 옆에 340px 칸 ── */
+.app{
+  height:100dvh;min-height:560px;max-width:1240px;margin:0 auto;
+  display:flex;flex-direction:column;
+  padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+}
+.head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.work{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding-top:14px}
+.side{flex:none;display:flex;flex-direction:column;gap:12px;min-width:0}
+.foot{flex:none;display:flex;flex-wrap:wrap;justify-content:center;gap:2px 14px;padding-top:10px;font-size:11px;color:var(--dim);letter-spacing:.02em}
+.foot-links{display:flex;gap:14px}
+.foot a{transition:color .2s}
+.foot a:hover{color:var(--text)}
+
+
+/* ── 로고: 세로 스파인 00 [ 01 ] 02 | 점선 | pebbly remover ┐┘ (미러 헤더 로고와 같은 비율, 이름 글자 크기 기준 em) ── */
+.brand{display:flex;align-items:center;gap:.58em;font-family:var(--logo);font-weight:400;font-size:24px;line-height:1;white-space:nowrap}
+.spine{display:flex;flex-direction:column;align-items:center;padding:.1em .47em;border-block:.25em solid;font-weight:500;font-size:.365em;line-height:1.05}
+.spine i{font-style:normal;opacity:.45}
+.spine b{font-weight:600;font-size:1.26em;white-space:pre}
+.stitch{align-self:stretch;border-left:.046em dashed}
+/* 오른쪽 끝 꺾쇠: 위 ┐, 아래 ┘ — 스파인 위아래 막대와 같은 높이 */
+.corner{align-self:stretch;position:relative;width:.31em;margin-left:.23em}
+.corner::before,.corner::after{content:'';position:absolute;right:0;width:100%;height:.31em;border-right:.077em solid}
+.corner::before{top:0;border-top:.077em solid}
+.corner::after{bottom:0;border-bottom:.077em solid}
+
+/* 한/영 */
+.lang{display:flex;align-items:center;font-weight:600;font-size:12px;letter-spacing:.08em}
+.lang button{padding:8px;color:var(--dim);transition:color .2s}
+.lang button:hover{color:var(--muted)}
+html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var(--text)}
+.lang i{width:1px;height:12px;background:var(--bd)}
+
+
+/* ── 보기 창 ── */
+.viewer{position:relative;flex:1;min-height:200px;border:1px solid var(--bd);border-radius:24px;overflow:hidden;background:var(--panel)}
+/* 비었을 때: 점선(로고 스티치)으로 놓는 자리 */
+.viewer:has(.v-empty){border-style:dashed;border-color:#3a3a3a}
+.v-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center}
+.v-empty-icon{position:relative;display:grid;place-items:center;width:84px;height:84px;margin-bottom:10px;color:var(--muted);transition:color .2s}
+.v-empty-icon svg:first-child{position:absolute;inset:0;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2.2}
+.v-empty:hover .v-empty-icon{color:var(--text)}
+.v-empty strong{font-size:15px;font-weight:600}
+.v-empty small{font-size:12px;color:var(--dim)}
+
+/* 그림 자리: 칸 안에 그림 비율 그대로 꽉 차게 (--r = 가로/세로) */
+.v-frame{position:absolute;inset:20px;container-type:size;display:grid;place-items:center}
+.v-pic{position:relative;width:min(100cqw, 100cqh * var(--r, 1));aspect-ratio:var(--r, 1);border-radius:4px;
+  background:repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0/16px 16px}
+.v-pic > img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:inherit;user-select:none;-webkit-user-drag:none}
+.v-pic > img.v-busy{opacity:.3;filter:blur(3px)}
+.v-orig{z-index:1}
+/* 비교 막대: 흰 선 + 둥근 손잡이 (그림 밖으로 반쯤 나와도 보이게 그림 칸은 자르지 않음) */
+.v-line{position:absolute;top:0;bottom:0;z-index:2;width:0;border-left:1.5px solid var(--accent);margin-left:-.75px;pointer-events:none}
+.v-knob{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--bg);border:1.5px solid var(--accent)}
+.v-tag{position:absolute;bottom:10px;z-index:2;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.2);font-size:11px;letter-spacing:.03em;opacity:0;transition:opacity .2s;pointer-events:none;backdrop-filter:blur(6px)}
+.v-tag[data-on=true]{opacity:1}
+.v-tag-l{left:10px}
+.v-tag-r{right:10px}
+.v-range{position:absolute;inset:0;z-index:3;width:100%;height:100%;opacity:0;cursor:ew-resize}
+/* 지우는 중: [ 42% ] */
+.v-work{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:rgba(0,0,0,.5)}
+.v-pct{font-family:var(--logo);font-weight:600;font-size:clamp(30px, 9cqmin, 64px);line-height:1;white-space:pre}
+.v-pct small{font-size:.55em;font-weight:500;opacity:.6}
+.v-work-label{font-size:12px;color:var(--muted);letter-spacing:.03em}
+.v-err .v-work-label{color:var(--bad)}
+.v-save{position:absolute;top:12px;right:12px;z-index:5;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.65);backdrop-filter:blur(6px);transition:background .2s,color .2s}
+.v-save:hover{background:var(--accent);color:var(--on-accent)}
+
+
+/* ── 상태 줄: 점 · 상태 · 개수 · 점선 진행 줄 · 남은 시간 ── */
+.status{display:flex;align-items:center;gap:10px;min-width:0;height:42px;padding:0 14px;border:1px solid var(--bd);border-radius:14px;font-size:12px;white-space:nowrap}
+.status[data-state=idle]{color:var(--muted)}
+.status[data-state=error]{border-color:rgba(255,107,107,.45);color:var(--bad)}
+.dot{flex:none;width:8px;height:8px;border-radius:50%;border:1.5px solid currentColor}
+.status[data-state=busy] .dot{background:currentColor;animation:pulse 1.2s ease-in-out infinite}
+.status[data-state=done] .dot{background:currentColor}
+.st-label{font-weight:600}
+.st-dim{color:var(--dim)}
+.st-grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.st-retry{flex:none;padding:5px 12px;border-radius:999px;border:1px solid currentColor;font-size:11px;font-weight:600;transition:background .2s,color .2s}
+.st-retry:hover{background:var(--bad);color:var(--on-accent)}
+.gauge{flex:1;min-width:24px;height:2px;position:relative;background:repeating-linear-gradient(90deg, #3a3a3a 0 4px, transparent 4px 8px)}
+.gauge i{position:absolute;inset:0 auto 0 0;background:var(--accent);transition:width .3s}
+@keyframes pulse{50%{opacity:.25}}
+
+
+/* ── 썸네일 ── */
+.strip{display:flex;flex-direction:column;gap:8px;min-height:0}
+.strip-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+.strip-sel{color:var(--dim)}
+.strip-bar button{color:var(--muted);transition:color .2s}
+.strip-bar button:hover{color:var(--text)}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding:3px;margin:-3px;scrollbar-width:none}
+.thumbs::-webkit-scrollbar{display:none}
+.thumb{flex:none;position:relative;width:56px;height:56px;border-radius:14px;border:1px solid var(--bd);overflow:hidden;cursor:pointer;background:var(--panel);transition:border-color .2s,opacity .2s}
+.thumb img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.thumb[data-state=pending] img{filter:grayscale(1);opacity:.35}
+.thumb[data-state=processing]{cursor:wait}
+.thumb[data-state=processing] img{opacity:.45}
+.thumb[data-state=completed][data-sel=false]{opacity:.6}
+.thumb[data-state=completed][data-sel=false]:hover{opacity:1}
+/* 받을 목록에 든 것: 흰 테 두 겹 + 체크 */
+.thumb[data-sel=true]{border-color:var(--accent);outline:1px solid var(--accent);outline-offset:-2px}
+.thumb[data-state=error]{border-color:rgba(255,107,107,.6)}
+.thumb-add{display:grid;place-items:center;color:var(--muted);border:1.25px dashed #4a4a4a;background:none}
+.thumb-add:hover{color:var(--text);border-color:var(--accent)}
+.th-view{position:absolute;left:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--bg)}
+.th-check,.th-err{position:absolute;right:4px;top:4px;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--accent);color:var(--on-accent)}
+.th-err{background:var(--bad);font-size:11px;font-weight:700}
+.th-pct{position:absolute;right:4px;top:4px;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.7);font-size:9px}
+.th-bar{position:absolute;left:6px;right:6px;bottom:6px;height:2px;background:rgba(255,255,255,.2)}
+.th-bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+
+
+/* ── 받기 버튼 ── */
+.actions{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;border-radius:14px;border:1px solid rgba(255,255,255,.5);font-size:14px;font-weight:600;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,opacity .2s}
+.btn:hover:not(:disabled){background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn:disabled{opacity:.3}
+.btn-main{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn-main:hover:not(:disabled){background:#d6d6d6;border-color:#d6d6d6}
+.btn-ghost{border-color:var(--bd);color:var(--muted)}
+.btn .num{font-weight:500}
+
+
+/* ── 끌어 오는 중: 화면 전체에 점선 테두리 ── */
+.drop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .2s}
+.drop::before{content:'';position:absolute;inset:16px;border:2px dashed rgba(255,255,255,.75);border-radius:28px}
+.drop[data-on=true]{opacity:1}
+.drop-msg{position:relative;padding:14px 22px;border-radius:16px;background:var(--accent);color:var(--on-accent);font-size:18px;font-weight:600}
+
+
+/* ── 시작 인트로 [ 01 ] (Intro.tsx, _brand/intro/pebbly-intro.html과 같은 그림) ── */
+.pi{position:fixed;inset:0;z-index:100;background:#000;color:#fff;font-family:var(--logo);touch-action:none;animation:intro-bail .5s 8s forwards}
+.pi svg{display:block;width:100%;height:100%}
+.pi path{fill:none;stroke:currentColor}
+.pi text{fill:currentColor;text-anchor:middle}
+.pi .mid{font-weight:600;font-size:12.5px}
+.pi .dim{font-weight:500;font-size:11px;opacity:.45}
+.pi .name{font-weight:400;font-size:27px;dominant-baseline:central}
+html[data-intro=off] .pi{display:none}
+@keyframes intro-bail{to{opacity:0;visibility:hidden}}
+
+
+/* ── 없는 주소 ── */
+.nf{height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:var(--muted)}
+.nf-no{font-family:var(--logo);font-weight:600;font-size:40px;color:var(--text);white-space:pre}
+.nf .btn{margin-top:10px}
+
+
+/* ── PC: 보기 창 | 옆 칸(상태 · 썸네일 · 받기) ── */
+@media (min-width:900px){
+  .app{padding:28px 40px 16px}
+  .head{padding-bottom:20px}
+  .brand{font-size:30px}
+  .work{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr);gap:24px;padding-top:24px}
+  .viewer{min-height:0}
+  .side{min-height:0}
+  .strip{flex:1}
+  .thumbs{min-height:0;flex-wrap:wrap;align-content:flex-start;overflow-x:hidden;overflow-y:auto}
+  .thumb{width:72px;height:72px;border-radius:16px}
+  .foot{justify-content:space-between;padding-top:14px}
+}
