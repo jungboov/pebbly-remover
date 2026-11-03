@@ -8,6 +8,7 @@ import { StatusBar } from './_components/StatusBar';
 import { ThumbnailStrip } from './_components/ThumbnailStrip';
 import { ControlRow } from './_components/ControlRow';
 import { DragOverlay } from './_components/DragOverlay';
+import { ModeBar } from './_components/ModeBar';
 import { T } from './_components/T';
 
 // 화면: 머리(로고 · 한/영) / 보기 창 / 옆(상태 · 썸네일 · 받기) / 바닥 글
@@ -32,6 +33,13 @@ export default function Home() {
     modelProgress,
     modelMB,
     warmUp,
+    mode,
+    setMode,
+    product,
+    setProduct,
+    sticker,
+    setSticker,
+    selectedOutput,
     selectedItem,
     batchStatus,
     batchStats,
@@ -59,12 +67,15 @@ export default function Home() {
       <div className="work">
         <Viewer
           selectedItem={selectedItem}
+          mode={mode}
+          output={selectedOutput}
           compareSlider={compareSlider}
           onCompareChange={setCompareSlider}
           onFileInputClick={pickFiles}
           onDownloadCurrent={handleDownloadCurrent}
         />
         <div className="side">
+          <ModeBar mode={mode} onMode={setMode} product={product} onProduct={setProduct} sticker={sticker} onSticker={setSticker} />
           <StatusBar
             modelStatus={modelStatus}
             modelProgress={modelProgress}

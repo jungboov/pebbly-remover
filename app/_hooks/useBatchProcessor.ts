@@ -3,13 +3,17 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import JSZip from 'jszip';
 import { createEngine, type Engine } from '../_lib/engine';
-import { makeThumb } from '../_lib/thumbs';
+import { makeThumb, renderOutput } from '../_lib/canvasJobs';
+import type { Box, Mode, ProductOpts, StickerOpts, Spec } from '../_lib/post';
+import { setOutSettings, useOutSettings } from '../_lib/outSettings';
 
 export interface BatchItem {
   id: string;
   original: string;
   thumb?: string;   // 썸네일용 작은 그림 — 만들기 전엔 빈 칸(원본 10장을 그대로 띄우면 풀고 그리느라 화면이 멈춤), 못 만들면 original
-  processed: string | null;
+  processed: string | null;   // 지운 결과(투명 PNG) 주소
+  cutout?: Blob;              // 그 파일 — 상품 사진·스티커로 다시 그릴 때
+  box?: Box | null;           // 물체가 있는 상자(결과 화소)
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress: number;
   fileName: string;
@@ -28,10 +32,14 @@ function formatTimestamp(d: Date): string {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 }
 
-function singleFileName(originalName: string): string {
+// 받는 파일 이름: 지우기 pebbly-remover-이름.png · 상품 사진 …-product.jpg · 스티커 …-sticker360.png
+function singleFileName(originalName: string, spec: Spec | null): string {
   const base = originalName.replace(/\.[^/.]+$/, '');
+  if (spec?.mode === 'product') return `pebbly-remover-${base}-product.jpg`;
+  if (spec?.mode === 'sticker') return `pebbly-remover-${base}-sticker${spec.opts.size}.png`;
   return `pebbly-remover-${base}.png`;
 }
+
 
 export function useBatchProcessor() {
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
@@ -43,6 +51,10 @@ export function useBatchProcessor() {
   const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [modelProgress, setModelProgress] = useState(0);
   const [modelMB, setModelMB] = useState(88);   // 첫 진행 소식 전(모델 크기, model.ts가 받는 대로 고침)
+  const { mode, product, sticker } = useOutSettings();   // 만들기 설정(이 브라우저에 기억)
+  const setMode = (m: Mode) => setOutSettings({ mode: m });
+  const setProduct = (o: ProductOpts) => setOutSettings({ product: o });
+  const setSticker = (o: StickerOpts) => setOutSettings({ sticker: o });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedIdRef = useRef<string | null>(null);
@@ -116,11 +128,11 @@ export function useBatchProcessor() {
         currentRef.current = id;
         patchItem(id, { status: 'processing', progress: 0, startedAt: Date.now() });
         try {
-          const resultBlob = await getEngine().run(file);
+          const { blob, box } = await getEngine().run(file);
           if (!filesRef.current.has(id)) continue;   // 처리 중에 비움
-          const url = URL.createObjectURL(resultBlob);
+          const url = URL.createObjectURL(blob);
           lastCompletedIdRef.current = id;
-          patchItem(id, { processed: url, status: 'completed', progress: 100, completedAt: Date.now() });
+          patchItem(id, { processed: url, cutout: blob, box, status: 'completed', progress: 100, completedAt: Date.now() });
         } catch (e) {
           console.error("처리 오류:", e);
           if (filesRef.current.has(id)) patchItem(id, { status: 'error' });
@@ -256,6 +268,41 @@ export function useBatchProcessor() {
 
   const deselectAll = () => setSelectedIds(new Set());
 
+  // 상품 사진·스티커: 지운 결과에서 캔버스 워커가 다시 그림(모델은 안 돌림). 지금 설정의 결과만 기억 — 설정을 바꾸면 버림
+  const spec: Spec | null = useMemo(
+    () => (mode === 'product' ? { mode, opts: product } : mode === 'sticker' ? { mode, opts: sticker } : null),
+    [mode, product, sticker],
+  );
+  const specKey = spec ? JSON.stringify(spec) : 'cut';
+  const outRef = useRef<{ key: string; done: Map<string, { blob: Blob; url: string }>; pending: Map<string, Promise<Blob>> }>({ key: 'cut', done: new Map(), pending: new Map() });
+  const [outUrls, setOutUrls] = useState<{ key: string; urls: Record<string, string> }>({ key: 'cut', urls: {} });
+  useEffect(() => {
+    if (outRef.current.key === specKey) return;
+    for (const o of outRef.current.done.values()) URL.revokeObjectURL(o.url);
+    outRef.current = { key: specKey, done: new Map(), pending: new Map() };
+  }, [specKey]);
+
+  const getOutput = async (item: BatchItem): Promise<Blob | null> => {
+    if (!item.cutout) return null;
+    if (!spec) return item.cutout;
+    const out = outRef.current;
+    if (out.key !== specKey) return renderOutput(item.cutout, item.box ?? null, spec);   // 설정이 막 바뀜(기억은 다음 그림부터)
+    const hit = out.done.get(item.id);
+    if (hit) return hit.blob;
+    let p = out.pending.get(item.id);
+    if (!p) {
+      p = renderOutput(item.cutout, item.box ?? null, spec);
+      out.pending.set(item.id, p);
+      p.then(blob => {
+        if (outRef.current !== out) return;
+        const url = URL.createObjectURL(blob);
+        out.done.set(item.id, { blob, url });
+        setOutUrls(prev => ({ key: out.key, urls: prev.key === out.key ? { ...prev.urls, [item.id]: url } : { [item.id]: url } }));
+      }, () => {}).finally(() => out.pending.delete(item.id));
+    }
+    return p;
+  };
+
   const getSelectedItems = () =>
     batchItems.filter(i => i.status === 'completed' && i.processed && selectedIds.has(i.id));
 
@@ -267,12 +314,12 @@ export function useBatchProcessor() {
       const { saveAs } = await (await import('file-saver')).default;
       const zip = new JSZip();
       for (const item of items) {
-        const response = await fetch(item.processed!);
-        const blob = await response.blob();
-        zip.file(singleFileName(item.fileName), blob);
+        const blob = await getOutput(item);
+        if (blob) zip.file(singleFileName(item.fileName, spec), blob);
       }
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `pebbly-remover-${formatTimestamp(new Date())}.zip`);
+      // 사진은 이미 압축돼 있어서 ZIP은 담기만(STORE) — 다시 압축하면 시간만 듦
+      const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      saveAs(content, `pebbly-remover-${spec ? spec.mode + '-' : ''}${formatTimestamp(new Date())}.zip`);
     } catch (error) {
       console.error("ZIP 다운로드 실패:", error);
     } finally {
@@ -287,9 +334,9 @@ export function useBatchProcessor() {
     try {
       const { saveAs } = await (await import('file-saver')).default;
       for (const item of items) {
-        const response = await fetch(item.processed!);
-        const blob = await response.blob();
-        saveAs(blob, singleFileName(item.fileName));
+        const blob = await getOutput(item);
+        if (!blob) continue;
+        saveAs(blob, singleFileName(item.fileName, spec));
         // brief pause so the browser actually fires each download dialog
         await new Promise(r => setTimeout(r, 180));
       }
@@ -306,9 +353,8 @@ export function useBatchProcessor() {
     if (!item || item.status !== 'completed' || !item.processed) return;
     try {
       const { saveAs } = await (await import('file-saver')).default;
-      const response = await fetch(item.processed);
-      const blob = await response.blob();
-      saveAs(blob, singleFileName(item.fileName));
+      const blob = await getOutput(item);
+      if (blob) saveAs(blob, singleFileName(item.fileName, spec));
     } catch (error) {
       console.error("현재 결과 다운로드 실패:", error);
     }
@@ -323,6 +369,8 @@ export function useBatchProcessor() {
       if (item.thumb && item.thumb !== item.original) URL.revokeObjectURL(item.thumb);
       if (item.processed) URL.revokeObjectURL(item.processed);
     });
+    for (const o of outRef.current.done.values()) URL.revokeObjectURL(o.url);
+    outRef.current = { key: specKey, done: new Map(), pending: new Map() };
     setBatchItems([]);
     setSelectedIndex(null);
     setSelectedIds(new Set());
@@ -331,6 +379,19 @@ export function useBatchProcessor() {
   const selectedItem = useMemo(() =>
     selectedIndex !== null ? batchItems[selectedIndex] : null
   , [batchItems, selectedIndex]);
+
+  const selCutout = selectedItem?.cutout;
+  useEffect(() => {
+    if (!spec || !selectedItem?.cutout || outRef.current.key !== specKey || outRef.current.done.has(selectedItem.id)) return;
+    const item = selectedItem;
+    const t = setTimeout(() => { getOutput(item).catch(e => console.error('결과 만들기 오류:', e)); }, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specKey, selectedItem?.id, selCutout]);
+  // 지금 보기 창에 띄울 결과: 지우기는 투명 PNG, 상품 사진·스티커는 다시 그린 것(아직이면 null)
+  const selectedOutput = !selectedItem?.processed ? null
+    : !spec ? selectedItem.processed
+    : outUrls.key === specKey ? outUrls.urls[selectedItem.id] ?? null : null;
 
   const batchStatus: 'idle' | 'processing' | 'ready' = useMemo(() => {
     if (batchItems.length === 0) return 'idle';
@@ -395,6 +456,13 @@ export function useBatchProcessor() {
     modelProgress,
     modelMB,
     warmUp,
+    mode,
+    setMode,
+    product,
+    setProduct,
+    sticker,
+    setSticker,
+    selectedOutput,
     selectedItem,
     batchStatus,
     batchStats,

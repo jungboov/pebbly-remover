@@ -2,9 +2,11 @@
 // 워커에서 모델을 못 열면 화면 스레드(같은 코드, 지우는 동안 화면이 멈춤)로
 // GPU/CPU는 model.ts가 고름 — 주소에 ?gpu=1 / ?gpu=0을 붙이면 시험 삼아 강제로
 import type { Prefer, Progress } from './model';
-import type { PostStep, Step } from './pipeline';
+import type { Cutout, Step } from './pipeline';
+import type { Box } from './post';
 
-type Pending = { resolve: (m: { blob?: Blob; device?: string }) => void; reject: (e: Error) => void };
+type Reply = { blob?: Blob; box?: Box | null; device?: string };
+type Pending = { resolve: (m: Reply) => void; reject: (e: Error) => void };
 
 const canUseWorker = () =>
   typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && 'convertToBlob' in OffscreenCanvas.prototype;
@@ -47,8 +49,8 @@ export function createEngine(onProgress: Progress, onStep: Step) {
     };
     return (worker = w);
   };
-  const call = (msg: { op: 'preload' | 'run'; blob?: Blob; post?: PostStep[] }) =>
-    new Promise<{ blob?: Blob; device?: string }>((resolve, reject) => {
+  const call = (msg: { op: 'preload' | 'run'; blob?: Blob }) =>
+    new Promise<Reply>((resolve, reject) => {
       const req = ++seq;
       pending.set(req, { resolve, reject });
       getWorker().postMessage({ ...msg, prefer, req });
@@ -80,14 +82,15 @@ export function createEngine(onProgress: Progress, onStep: Step) {
 
   return {
     preload,
-    async run(file: Blob, post: PostStep[] = []): Promise<Blob> {
+    // 투명 PNG와 물체 상자(상품 사진·스티커로 다시 그릴 때 씀)
+    async run(file: Blob): Promise<Cutout> {
       if (mode === 'main') {
         const { model, pipeline } = await openMain();
-        return pipeline.removeBackground(file, input => model.segment(input), onStep, post);
+        return pipeline.removeBackground(file, input => model.segment(input), onStep);
       }
-      const { blob } = await call({ op: 'run', blob: file, post });
+      const { blob, box } = await call({ op: 'run', blob: file });
       if (!blob) throw new Error('worker: no result');
-      return blob;
+      return { blob, box: box ?? null };
     },
     get mode() { return mode; },
     get device() { return device; },

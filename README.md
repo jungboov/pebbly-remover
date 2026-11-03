@@ -5,13 +5,19 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
 
 - 주소: remover.pebblylabs.com (pebblylabs.com/01 → 여기)
 - 기능: 여러 장(한 번에 10장까지 줄 세워 한 장씩) 배경 지우기 · 원본/결과 비교 막대 · 썸네일 골라 ZIP·낱장 받기 · 지금 결과 받기 · 한/영 · PNG·JPEG·WebP 말고도 브라우저가 여는 그림(GIF·AVIF·BMP)
+- 만들기(옆 칸 맨 위, 설정은 이 브라우저에 기억 — `app/_lib/outSettings.ts`):
+  - 배경 지우기: 투명 PNG(원래 그대로)
+  - 상품 사진: 고른 색 바탕(흰색·연회색·검정·직접) · 정사각형 1000/1500/2000 · 모든 사진 같은 여백(0~30%) → JPEG. 사진 아래 끝에서 잘린 물체는 아래에 붙임
+  - 스티커: 흰 테두리(없음·얇게·보통·두껍게) · 투명 PNG · 카톡 규격 크기(이모티콘 360, 큰 이모티콘 540, 미니 180, 아이콘 78) + 크게 1000. 규격 용량을 넘으면 256색 PNG로
+    (규격 출처: 카카오 이모티콘 스튜디오 [이모티콘 유형별 이미지 가이드](https://kakaoemoticonstudio.notion.site/image-guide), 2026-11-04 확인 — 360 PNG 150KB · 540 1MB · 180 100KB · 78 16KB, 72dpi RGB, 투명 배경)
+  - 모드·설정을 바꾸면 다 지운 사진을 바로 다시 그림(모델은 다시 안 돌림, 캔버스 워커에서 — 화면 안 멈춤)
 - 지우기: ISNet fp16 모델(88MB — IMG.LY가 공개한 [@imgly/background-removal-data](https://github.com/imgly/background-removal-js) 1.7.0, 그쪽 CDN) + onnxruntime-web 1.21.0 wasm(이 사이트에서, Cloudflare brotli로 CPU 2.3MB · GPU 5.0MB)
   - 모델: fp32 176MB와 결과 같음. quint8 44MB는 배경과 색이 비슷한 사진에서 깨져서 안 씀
   - 라이브러리(@imgly/background-removal) 없이 직접 부름(`app/_lib/model.ts`): 받은 파일을 Cache Storage에 남겨 다음 방문부턴 망 없이, 설명 파일 한 번만. wasm은 빌드가 `_next/static/media`에 넣음(imgly CDN은 안 줄여서 12·23MB)
   - GPU(WebGPU): 크롬 계열 PC에서 f16 셰이더가 되면(1024 한 장 이 PC RTX 4060 0.1초 · CPU 16스레드 2.3초). 폰·사파리·파이어폭스는 실기기로 못 봐서 CPU — 주소에 `?gpu=1`/`?gpu=0`으로 시험. 열다가·지우다가 안 되면 CPU로
-  - 줄이기·늘리기·합치기는 캔버스로(`app/_lib/pipeline.ts`) — 큰 사진도 빠름. 5천만 화소 넘는 사진은 줄여서(못 만들면 1,677만). 후처리(테두리·여백·크기)는 여기 `POST`에 더함
+  - 줄이기·늘리기·합치기는 캔버스로(`app/_lib/pipeline.ts`) — 큰 사진도 빠름. 5천만 화소 넘는 사진은 줄여서(못 만들면 1,677만). 지운 결과와 물체 상자를 남겨 후처리(`app/_lib/post.ts`)가 다시 그림
   - 미리 받기: PC(마우스)는 인트로가 끝나고 쉴 때, 폰·데이터 절약은 ＋를 누르거나 끌어 올 때부터
-  - 썸네일은 따로 작은 워커(`app/_lib/thumb.worker.ts`)가 192px로 — 큰 원본을 그대로 띄우면 풀고 그리느라 화면이 멈추고 GPU 쪽 메모리를 씀
+  - 썸네일·상품 사진·스티커는 따로 캔버스 워커(`app/_lib/canvas.worker.ts`)가 — 큰 원본을 화면 스레드에서 풀고 그리면 멈춤
   - 여러 코어: `public/_headers`의 교차 출처 격리(COOP·COEP) 머리글이 있어야 스레드가 켜짐(없으면 1스레드, 이 PC에서 2장 18초 → 3.7초). 밖에서 불러오는 것을 더하면 그쪽이 `Cross-Origin-Resource-Policy: cross-origin`(또는 CORS)을 보내는지 확인
   - 웹 워커에서 지움(`app/_lib/remover.worker.ts`) — 지우는 동안에도 화면이 안 멈춤.
     워커에서 못 그리는 브라우저(OffscreenCanvas 없음)거나 워커에서 모델을 못 열면 화면 스레드로(같은 코드, 지우는 동안 화면이 멈춤) — `app/_lib/engine.ts`
@@ -37,6 +43,6 @@ npm run build      # out/ 에 정적 파일
 
 ## 폴더
 - `app/page.tsx` 화면 틀 · `app/_hooks/useBatchProcessor.ts` 처리 줄·받기 · `app/_components/` 부품
-- `app/_lib/engine.ts` 지우기를 워커/화면 스레드 어디서 돌릴지 · `app/_lib/remover.worker.ts` 워커 · `app/_lib/model.ts` 모델 받기·열기(GPU/CPU) · `app/_lib/pipeline.ts` 한 장 처리(줄이기·합치기·후처리)
+- `app/_lib/engine.ts` 지우기를 워커/화면 스레드 어디서 돌릴지 · `app/_lib/remover.worker.ts` 워커 · `app/_lib/model.ts` 모델 받기·열기(GPU/CPU) · `app/_lib/pipeline.ts` 한 장 처리(줄이기·합치기) · `app/_lib/post.ts` 상품 사진·스티커 · `app/_lib/canvas.worker.ts`·`canvasJobs.ts` 썸네일·후처리 워커 · `app/_components/ModeBar.tsx` 만들기 칸
 - `app/_components/Intro.tsx` 번호 인트로(부품 부름) · `app/_lib/intro.ts` 정적 첫 장면 · `app/_lib/boot.ts` 그리기 전 스크립트(한/영·인트로·설치 앱 첫 장면) · `app/_lib/lang.ts` 한/영
 - `scripts/og-image.mjs` 공유 이미지

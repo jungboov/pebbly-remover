@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { BatchItem } from '../_hooks/useBatchProcessor';
+import type { Mode } from '../_lib/post';
 import { superellipse } from '../_lib/intro';
 import { useLang } from '../_lib/lang';
 import { IconDown, IconPlus, IconSlide } from './Icons';
@@ -9,6 +10,8 @@ import { T } from './T';
 
 interface ViewerProps {
   selectedItem: BatchItem | null;
+  mode: Mode;
+  output: string | null;   // 지금 모드의 결과(상품 사진·스티커는 다시 그린 것, 아직이면 null)
   compareSlider: number;
   onCompareChange: (v: number) => void;
   onFileInputClick: () => void;
@@ -18,12 +21,16 @@ interface ViewerProps {
 // 빈 화면 상자: 앱 아이콘과 같은 초타원(n=2.7)
 const EMPTY_BOX = superellipse(30, 30, 2.7);
 
-// 비교 막대: 막대 왼쪽은 원본, 오른쪽은 결과. 0이면 결과만 (처음엔 결과부터 보여 주고 밀어서 비교)
-export function Viewer({ selectedItem, compareSlider, onCompareChange, onFileInputClick, onDownloadCurrent }: ViewerProps) {
+// 비교 막대(지우기만): 막대 왼쪽은 원본, 오른쪽은 결과. 0이면 결과만 (처음엔 결과부터 보여 주고 밀어서 비교)
+// 상품 사진·스티커는 틀이 원본과 달라서 비교 막대 없이 결과만 — 다시 그리는 동안은 지운 결과를 흐리게
+export function Viewer({ selectedItem, mode, output, compareSlider, onCompareChange, onFileInputClick, onDownloadCurrent }: ViewerProps) {
   const lang = useLang();
   const [ratio, setRatio] = useState(1);
   const canDownloadCurrent = selectedItem?.status === 'completed' && !!selectedItem.processed;
   const s = compareSlider;
+  const post = mode !== 'cut' && !!selectedItem?.processed;
+  const rendering = post && !output;
+  const src = post ? output ?? selectedItem!.processed! : selectedItem?.processed || selectedItem?.original;
 
   return (
     <section className="viewer">
@@ -52,8 +59,8 @@ export function Viewer({ selectedItem, compareSlider, onCompareChange, onFileInp
         <div className="v-frame">
           <div className="v-pic" style={{ '--r': ratio } as React.CSSProperties}>
             <img
-              src={selectedItem.processed || selectedItem.original}
-              className={selectedItem.status === 'processing' ? 'v-busy' : undefined}
+              src={src}
+              className={selectedItem.status === 'processing' || rendering ? 'v-busy' : undefined}
               onLoad={(e) => {
                 const im = e.currentTarget;
                 if (im.naturalWidth && im.naturalHeight) setRatio(im.naturalWidth / im.naturalHeight);
@@ -61,7 +68,7 @@ export function Viewer({ selectedItem, compareSlider, onCompareChange, onFileInp
               alt={lang === 'ko' ? '결과 미리보기' : 'Result preview'}
             />
 
-            {selectedItem.processed && (
+            {selectedItem.processed && !post && (
               <>
                 <img src={selectedItem.original} className="v-orig" style={{ clipPath: `inset(0 ${100 - s}% 0 0)` }} alt="" />
                 <div className="v-line" style={{ left: `${s}%` }} aria-hidden="true">
