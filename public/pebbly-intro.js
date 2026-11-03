@@ -7,7 +7,7 @@
      no       번호 0~99                        name     로고 이름
      size     (w, h) => 로고 폭(px)            기본: 화면 폭 84% · 세로 1.1배 · 1000px 중 작은 것
      splash   첫 장면 배율. 'auto'(기본) = 안드로이드 12+에 설치한 앱이면 1.73(시스템 시작 화면이 아이콘을 띄우는 크기, 폴드8 녹화로 잼)
-              + standalone이면 상태바 절반만큼 올려서 시작(시작 화면 아이콘과 같은 자리)
+              + standalone이면 상태바 절반만큼 올려서, 가로면 카메라 구멍 쪽 띠 절반만큼 옮겨서 시작(시작 화면 아이콘과 같은 자리), 가로 배율 1.81
      skip     누르거나 키를 누르면 바로 사라짐(기본 true). 누름은 root 밖으로 안 넘김(제품의 밀기·두 번 탭과 안 섞이게)
      T        시간 표(ms) 일부만 바꿀 때        onStart  펼쳐지기 시작할 때      onDone   다 사라진 뒤(기본: root를 지움)
      late     숫자가 멈춘 뒤 이름(기본 true). false = 예전 순서(펼쳐질 때 이름까지 다 나오고 스파인 칸에서 숫자가 돎)
@@ -64,13 +64,16 @@ function pebblyIntro(root, opts = {}) {
   // 첫 장면 높이(dy): 시작 화면은 아이콘을 화면 전체 가운데에 두는데, standalone 앱은 상태바 아래만 쓰므로 그 가운데가 상태바 절반만큼 아래
   //   → 상태바 절반만큼 올려서 시작하고 펼쳐지는 동안 가운데로 내려옴(00 녹화로 잼: 상태바 48px, 24px 어긋나 아이콘이 한 번 더 나오는 듯 보였음)
   //   상태바 = 화면 높이 − 보이는 높이(아래 내비게이션 바는 제스처라 0). 64px 넘게 차이 나면(버튼식 내비게이션 바) 셈이 안 맞아 그대로. fullscreen(미러)은 0
-  let s = typeof splash === 'number' ? splash : 1, dy = 0, started = 0;
+  // 가로(dx): 상태바는 앱 위에 겹쳐 세로는 0인데, 앱이 카메라 구멍 쪽 띠(약 47px)를 비우고 그려져 가운데가 그 절반만큼 반대쪽
+  //   → 구멍 쪽으로 옮겨서 시작. 구멍은 세로일 때 위 — 화면 각도 90(위가 왼쪽)이면 왼쪽, 270이면 오른쪽. 크기도 가로 시작 화면이 5% 커서 1.81(00 가로 녹화로 잼)
+  let s = typeof splash === 'number' ? splash : 1, dx = 0, dy = 0, started = 0;
   if (splash === 'auto' && /Android/.test(navigator.userAgent) && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
-    s = 1.73;
-    const gap = screen.height - innerHeight;
-    if (gap > 0 && gap <= 64) dy = -gap / 2;
+    s = innerWidth > innerHeight ? 1.81 : 1.73;
+    const gy = screen.height - innerHeight, gx = screen.width - innerWidth, ang = screen.orientation ? screen.orientation.angle : 0;
+    if (gy > 0 && gy <= 64) dy = -gy / 2;
+    if (gx > 0 && gx <= 64) dx = (ang === 90 ? -1 : ang === 270 ? 1 : 0) * gx / 2;
     if (navigator.userAgentData) navigator.userAgentData.getHighEntropyValues(['platformVersion'])
-      .then(v => { if (!started && parseInt(v.platformVersion) < 12) { s = 1; dy = 0; render(0); } }).catch(() => {});
+      .then(v => { if (!started && parseInt(v.platformVersion) < 12) { s = 1; dx = dy = 0; render(0); } }).catch(() => {});
   }
   function render(t) {
     const k = size(root.clientWidth, root.clientHeight) / LW;
@@ -78,7 +81,7 @@ function pebblyIntro(root, opts = {}) {
     const r = late ? io(part(t, SPIN + T.spin, SHOWN)) : 1, lx = -48 * k + (48 - LW / 2) * k * r;
     lock.setAttribute('transform', `translate(${lx} ${-60 * k}) scale(${k})`);
     const p = part(t, T.hold, T.hold + T.morph), e = io(p);
-    const A = { a: 59.5 * s, b: 59.5 * s, n: 2.7, sw: 7.5 * s, tx: .15 * s, ty: 13.4 * s, fs: 38 * s, x: 0, y: dy }, B = { a: 28 * k, b: 42 * k, n: 16, sw: 2.8 * k, tx: 0, ty: 4 * k, fs: 12.5 * k, x: lx + 48 * k, y: 0 };
+    const A = { a: 59.5 * s, b: 59.5 * s, n: 2.7, sw: 7.5 * s, tx: .15 * s, ty: 13.4 * s, fs: 38 * s, x: dx, y: dy }, B = { a: 28 * k, b: 42 * k, n: 16, sw: 2.8 * k, tx: 0, ty: 4 * k, fs: 12.5 * k, x: lx + 48 * k, y: 0 };
     const v = key => A[key] + (B[key] - A[key]) * e;
     box.setAttribute('d', sq(v('a'), v('b'), v('n'), v('x'), v('y'))); box.setAttribute('stroke-width', v('sw')); box.style.opacity = 1 - part(p, .6, 1);   // 끝 무렵 옆선이 사라지고
     bars.style.opacity = part(p, .55, 1);                                       // 위아래 막대만 남음

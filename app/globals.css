@@ -177,8 +177,8 @@ html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var
 .pi > svg{display:block;width:100%;height:100%}
 .pi-first path{fill:none;stroke:currentColor}
 .pi-first text{fill:currentColor;text-anchor:middle}
-/* 설치 앱(안드로이드): 부품과 같이 1.73배, 상태바 절반만큼 위(--pi-dy, boot.ts가 잼) — 부품이 바꿔 낄 때 안 튀게 */
-html[data-splash] .pi-first{transform:translateY(var(--pi-dy,0px)) scale(1.73)}
+/* 설치 앱(안드로이드): 부품과 같은 크기·자리(세로 1.73배 · 가로 1.81배, 상태바·카메라 띠 절반만큼 — boot.ts가 잼) — 부품이 바꿔 낄 때 안 튀게 */
+html[data-splash] .pi-first{transform:translate(var(--pi-dx,0px),var(--pi-dy,0px)) scale(var(--pi-s,1.73))}
 html[data-intro=off] .pi{display:none}
 @keyframes intro-bail{to{opacity:0;visibility:hidden}}
 
