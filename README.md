@@ -10,8 +10,9 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
 ## 화면 (pebbly labs 브랜드)
 - 온라인 제품은 평면: 검은 바탕에 흰 선 (색은 미러와 같은 값, `app/globals.css`)
 - 로고: 세로 스파인 `00 [ 01 ] 02` | 점선 | `pebbly remover` | 꺾쇠 — MuseoModerno(이름 400·스파인 500·[ 01 ] 600), 한글 Pretendard
-- 처음 열 때 [ 01 ] 번호 인트로(`_brand/intro/pebbly-intro.html` 부품을 옮김, 탭마다 한 번 · `?intro`로 다시)
-- 앱 아이콘: 갤럭시 아이콘 모양(초타원 n=2.7) 상자 안 `[ 01 ]` — `npm run icons`로 다시 그림(헤드리스 크롬 + Pillow)
+- 처음 열 때 [ 01 ] 번호 인트로: 공용 부품 `public/pebbly-intro.js`(`_brand/intro/pebbly-intro.js`의 사본 — 고치지 말고 원본을 고친 뒤 `python _brand/intro/sync.py`가 사본과 layout.tsx의 `?v=`를 맞춤). 탭마다 한 번 · `?intro`로 다시
+- 앱 아이콘: 브랜드 생성기 결과 그대로(`node _brand/icons/make.js 01` → `_brand/icons/01/`, 둥근 네모 테 안 `[ 01 ]`). 주소의 `?v=`는 파일 해시 — 바꾸면 layout.tsx·manifest도 같이
+- 공유 이미지: `npm run og`(헤드리스 크롬)
 
 ## 개발
 ```bash
@@ -27,5 +28,5 @@ npm run build      # out/ 에 정적 파일
 
 ## 폴더
 - `app/page.tsx` 화면 틀 · `app/_hooks/useBatchProcessor.ts` 지우기·받기 · `app/_components/` 부품
-- `app/_lib/intro.ts` 번호 인트로 · `app/_lib/boot.ts` 그리기 전 스크립트(한/영·인트로) · `app/_lib/lang.ts` 한/영
-- `scripts/icons.mjs` 아이콘·공유 이미지
+- `app/_components/Intro.tsx` 번호 인트로(부품 부름) · `app/_lib/intro.ts` 정적 첫 장면 · `app/_lib/boot.ts` 그리기 전 스크립트(한/영·인트로·설치 앱 첫 장면) · `app/_lib/lang.ts` 한/영
+- `scripts/og-image.mjs` 공유 이미지

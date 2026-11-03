@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "npx serve out",
     "lint": "eslint",
-    "icons": "node scripts/icons.mjs"
+    "og": "node scripts/og-image.mjs"
   },
   "dependencies": {
     "@imgly/background-removal": "1.7.0",
