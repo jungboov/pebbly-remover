@@ -23,18 +23,48 @@ const WASM_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-
 const GLUE_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs', import.meta.url);
 const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm', import.meta.url);
 
-async function get(url: string, size?: number): Promise<Uint8Array> {
+// 망에서 받기는 한 번에 6개까지: 22조각을 한꺼번에 받으면 느린 망(1.6Mbps)에서 몇 분 동안 한 조각도 안 끝나 진행이 0%에 멈추고
+// 2분쯤에 끊겼음(예전 판도 같음). 6개면 빠른 망에서도 느려지지 않음. 받는 대로 바이트 단위로 진행 표시
+const MAX_FETCH = 6;
+let active = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(f: () => Promise<T>): Promise<T> {
+  if (active >= MAX_FETCH) await new Promise<void>(r => waiting.push(r));
+  active++;
+  try {
+    return await f();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
+}
+
+async function get(url: string, size?: number, tick: (n: number) => void = () => {}): Promise<Uint8Array> {
   const cache = typeof caches === 'undefined' ? null : await caches.open(CACHE).catch(() => null);
   const hit = await cache?.match(url).catch(() => undefined);
   if (hit) {
     const b = new Uint8Array(await hit.arrayBuffer());
-    if (size === undefined || b.length === size) return b;
+    if (size === undefined || b.length === size) { tick(b.length); return b; }
   }
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`model: ${res.status} ${url}`);
-  const b = new Uint8Array(await res.arrayBuffer());
+  const b = await slot(async () => {
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error(`model: ${res.status} ${url}`);
+    const parts: Uint8Array[] = [];
+    let n = 0;
+    for (const reader = res.body.getReader(); ;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      n += value.length;
+      tick(value.length);
+    }
+    const out = new Uint8Array(n);
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  });
   if (size !== undefined && b.length !== size) throw new Error(`model: size ${url}`);
-  cache?.put(url, new Response(b)).catch(() => {});   // 저장 공간이 모자라면 그냥 다음에 또 받음
+  cache?.put(url, new Response(b as BlobPart)).catch(() => {});   // 저장 공간이 모자라면 그냥 다음에 또 받음
   return b;
 }
 
@@ -47,21 +77,27 @@ async function load(key: string, tick: (n: number) => void): Promise<Uint8Array>
   if (!e) throw new Error(`model: no ${key}`);
   const out = new Uint8Array(e.size);
   await Promise.all(e.chunks.map(async c => {
-    const b = await get(BASE + c.name, c.offsets[1] - c.offsets[0]);
-    out.set(b, c.offsets[0]);
-    tick(b.length);
+    const size = c.offsets[1] - c.offsets[0];
+    let got = 0;
+    try {
+      out.set(await get(BASE + c.name, size, n => { got += n; tick(n); }), c.offsets[0]);
+    } catch (err) {
+      tick(-got);   // 끊긴 조각에서 센 만큼 진행을 되돌림(다시 받을 때 처음부터)
+      throw err;
+    }
   }));
   return out;
 }
 
-// GPU를 쓸지: 크롬 계열 PC에서 f16 셰이더가 되는 진짜 GPU일 때만(폰·사파리·파이어폭스는 아직 실기기로 못 봐서 CPU) — ?gpu=1 / ?gpu=0으로 시험
+// GPU를 쓸지: 크롬 계열 PC에서 f16 셰이더가 되는 진짜 GPU이고 메모리가 8GB 이상일 때만 — GPU 쪽 프로세스가 10장에 2~5GB까지 씀(이 PC).
+// 폰·사파리·파이어폭스는 아직 실기기로 못 봐서 CPU — ?gpu=1 / ?gpu=0으로 시험
 type Adapter = { features: { has(f: string): boolean }; info?: { isFallbackAdapter?: boolean } };
-type Nav = { gpu?: { requestAdapter(): Promise<Adapter | null> }; userAgentData?: { mobile: boolean; brands: { brand: string }[] } };
+type Nav = { gpu?: { requestAdapter(): Promise<Adapter | null> }; userAgentData?: { mobile: boolean; brands: { brand: string }[] }; deviceMemory?: number };
 async function gpuUsable(prefer: Prefer): Promise<boolean> {
   if (prefer === 'cpu') return false;
   const nav = navigator as unknown as Nav, ua = nav.userAgentData;
   if (!nav.gpu) return false;
-  if (prefer === 'auto' && (!ua || ua.mobile || !ua.brands.some(b => b.brand === 'Chromium'))) return false;
+  if (prefer === 'auto' && (!ua || ua.mobile || !ua.brands.some(b => b.brand === 'Chromium') || (nav.deviceMemory ?? 0) < 8)) return false;
   const a = await nav.gpu.requestAdapter().catch(() => null);
   return !!a && a.features.has('shader-f16') && !a.info?.isFallbackAdapter;
 }
@@ -69,10 +105,15 @@ async function gpuUsable(prefer: Prefer): Promise<boolean> {
 async function open(device: Device, onProgress: Progress): Promise<Model> {
   const man = await entries();
   const total = man[FILES.model].size;
-  let loaded = 0;
+  let loaded = 0, shown = 0;
   onProgress(0, total);
+  const tick = (n: number) => {   // 받는 대로 세되 알리는 건 1%씩(화면 다시 그리기를 줄이려고)
+    loaded += n;
+    const p = Math.floor((loaded / total) * 100);
+    if (p !== shown) { shown = p; onProgress(loaded, total); }
+  };
   const [model, wasm] = await Promise.all([
-    load(FILES.model, n => onProgress((loaded += n), total)),
+    load(FILES.model, tick),
     get(String(device === 'gpu' ? WASM_GPU : WASM_CPU)),
   ]);
 

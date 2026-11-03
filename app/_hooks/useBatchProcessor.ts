@@ -42,7 +42,7 @@ export function useBatchProcessor() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [modelProgress, setModelProgress] = useState(0);
-  const [modelMB, setModelMB] = useState(100);
+  const [modelMB, setModelMB] = useState(88);   // 첫 진행 소식 전(모델 크기, model.ts가 받는 대로 고침)
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedIdRef = useRef<string | null>(null);
