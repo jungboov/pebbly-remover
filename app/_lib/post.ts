@@ -277,7 +277,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   dv.setUint32(8 + data.length, (c ^ 0xffffffff) >>> 0);
   return out;
 }
-async function png8(img: ImageData): Promise<Blob> {
+export async function png8(img: ImageData): Promise<Blob> {
   const { width: w, height: h } = img;
   const { palette, index } = quantize(img.data);
   const raw = new Uint8Array((w + 1) * h);

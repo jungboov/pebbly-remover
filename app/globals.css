@@ -238,6 +238,28 @@ html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var
 @media (prefers-reduced-motion:reduce){.cs-back,.cs{animation:none}}
 
 
+/* ── 받기 설정(DownloadSheet.tsx): 받기 버튼 위 한 줄 → 누르면 아래에서 올라오는 시트(바탕색 고르기와 같은 틀) ── */
+.dl-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:40px;padding:0 14px;border:1px solid var(--bd);border-radius:14px;font-size:12px;text-align:left;transition:border-color .2s}
+.dl-row:hover{border-color:#3a3a3a}
+.dl-row > span{flex:none;font-weight:600}
+.dl-row em{min-width:0;font-style:normal;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-row em i{font-style:normal;margin-left:6px;color:var(--text)}
+.dl-row[data-off=true]{color:var(--dim);cursor:default}
+.dl-row[data-off=true] > span{font-weight:500}
+.dl-opts{display:flex;flex-direction:column;gap:10px}
+.dl-note{margin:-4px 0 0 64px;font-size:11px;color:var(--dim)}
+.dl-num{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--bd);border-radius:10px;font-family:var(--logo);color:var(--muted)}
+.dl-num input{width:64px;background:none;border:0;outline:none;color:var(--text);font:inherit;font-size:13px;-moz-appearance:textfield}
+.dl-num input::-webkit-outer-spin-button,.dl-num input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.dl-num:focus-within{border-color:var(--accent)}
+.dl-sum{display:flex;align-items:baseline;gap:8px;min-height:24px;padding:10px 2px 0;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.dl-sum b{font-size:17px;font-weight:600;color:var(--text)}
+.dl-pct{margin-left:auto;color:#9fe3b0}
+.dl-pct[data-up=true]{color:var(--bad)}
+.dl-files{flex:none;height:44px;padding:0 18px}
+.dl-zip{flex:1;height:44px}
+
+
 /* ── 받기 버튼 ── */
 .actions{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;border-radius:14px;border:1px solid rgba(255,255,255,.5);font-size:14px;font-weight:600;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,opacity .2s}

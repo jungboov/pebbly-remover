@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import JSZip from 'jszip';
 import { createEngine, type Engine } from '../_lib/engine';
-import { makeThumb, renderOutput } from '../_lib/canvasJobs';
+import { decodeHeic, makeThumb, renderOutput, shrinkOutput } from '../_lib/canvasJobs';
+import { isHeic } from '../_lib/heic';
+import { extOf, passThrough, type DlOpts } from '../_lib/shrink';
 import type { Mode, ProductOpts, StickerOpts, Spec, Src } from '../_lib/post';
 import { setOutSettings, useOutSettings } from '../_lib/outSettings';
 
@@ -18,12 +20,16 @@ export interface BatchItem {
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress: number;
   fileName: string;
+  bytes: number;              // 넣은 파일 용량(받기 설정의 전·후 비교)
   startedAt?: number;
   completedAt?: number;
 }
 
 // 한 번에 기다릴 수 있는 사진 수(처리 중 + 줄 선 것)
 export const MAX_BATCH = 10;
+
+// 나중에 기다릴 약속: 실패를 기다리는 쪽이 받을 때까지 '처리 안 된 실패'로 안 뜨게
+const handled = <T,>(p: Promise<T>) => { p.catch(() => {}); return p; };
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -33,12 +39,12 @@ function formatTimestamp(d: Date): string {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 }
 
-// 받는 파일 이름: 지우기 pebbly-remover-이름.png · 상품 사진 …-product.jpg · 스티커 …-sticker360.png
-function singleFileName(originalName: string, spec: Spec | null): string {
-  const base = originalName.replace(/\.[^/.]+$/, '');
-  if (spec?.mode === 'product') return `pebbly-remover-${base}-product.jpg`;
-  if (spec?.mode === 'sticker') return `pebbly-remover-${base}-sticker${spec.opts.size}.png`;
-  return `pebbly-remover-${base}.png`;
+// 받는 파일 이름: 지우기 pebbly-remover-이름.png · 상품 사진 …-product.jpg · 스티커 …-sticker360.png (확장자는 받는 형식대로)
+function singleFileName(originalName: string, spec: Spec | null, type: string): string {
+  const base = originalName.replace(/\.[^/.]+$/, ''), ext = extOf(type);
+  if (spec?.mode === 'product') return `pebbly-remover-${base}-product.${ext}`;
+  if (spec?.mode === 'sticker') return `pebbly-remover-${base}-sticker${spec.opts.size}.${ext}`;
+  return `pebbly-remover-${base}.${ext}`;
 }
 
 
@@ -52,7 +58,8 @@ export function useBatchProcessor() {
   const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [modelProgress, setModelProgress] = useState(0);
   const [modelMB, setModelMB] = useState(88);   // 첫 진행 소식 전(모델 크기, model.ts가 받는 대로 고침)
-  const { mode, product, sticker } = useOutSettings();   // 만들기 설정(이 브라우저에 기억)
+  const { mode, product, sticker, dl } = useOutSettings();   // 만들기·받기 설정(이 브라우저에 기억)
+  const setDl = (o: DlOpts) => setOutSettings({ dl: o });
   const setMode = (m: Mode) => setOutSettings({ mode: m });
   const setProduct = (o: ProductOpts) => setOutSettings({ product: o });
   const setSticker = (o: StickerOpts) => setOutSettings({ sticker: o });
@@ -66,6 +73,7 @@ export function useBatchProcessor() {
   const runningRef = useRef(false);
   const currentRef = useRef<string | null>(null);
   const thumbsRef = useRef<Promise<void>>(Promise.resolve());
+  const prepRef = useRef(new Map<string, Promise<void>>());   // 아이폰 사진(HEIC)을 JPG로 바꾸는 중(바꾼 파일이 filesRef에 들어감)
 
   // 지우기는 웹 워커에서(engine.ts — 안 되는 브라우저는 화면 스레드). 처음 쓸 때 만듦
   // 진행: 모델 받기(받은 바이트 / 모델+wasm 전체) · 지금 사진(풀기 10 → 모델 입력 20 → 마스크 80 → 다 됨 100)
@@ -124,11 +132,13 @@ export function useBatchProcessor() {
 
       while (queueRef.current.length > 0) {
         const id = queueRef.current.shift()!;
-        const file = filesRef.current.get(id);
-        if (!file) continue;
+        if (!filesRef.current.has(id)) continue;
         currentRef.current = id;
         patchItem(id, { status: 'processing', progress: 0, startedAt: Date.now() });
         try {
+          await prepRef.current.get(id);   // HEIC면 JPG로 바뀔 때까지
+          const file = filesRef.current.get(id);
+          if (!file) continue;
           const { blob, mask, size } = await getEngine().run(file);
           if (!filesRef.current.has(id)) continue;   // 처리 중에 비움
           const url = URL.createObjectURL(blob);
@@ -189,7 +199,7 @@ export function useBatchProcessor() {
   const handleFiles = (files: FileList | File[]) => {
     const startIdx = batchItems.length;
     // 끌어 놓기로 들어온 이미지 아닌 파일은 거름
-    let filesArray = Array.from(files).filter(f => f.type.startsWith('image/'));
+    let filesArray = Array.from(files).filter(f => f.type.startsWith('image/') || isHeic(f));
     const room = MAX_BATCH - queueRef.current.length - (currentRef.current ? 1 : 0);
     if (filesArray.length > room) {
       console.warn(`한 번에 ${MAX_BATCH}장까지 — 초과분 ${filesArray.length - Math.max(room, 0)}장 무시됨.`);
@@ -199,7 +209,19 @@ export function useBatchProcessor() {
     const newItems: BatchItem[] = filesArray.map(file => {
       const id = crypto.randomUUID();
       filesRef.current.set(id, file);
-      return { id, original: URL.createObjectURL(file), processed: null, status: 'pending', progress: 0, fileName: file.name };
+      const item: BatchItem = { id, original: URL.createObjectURL(file), processed: null, status: 'pending', progress: 0, fileName: file.name, bytes: file.size };
+      // HEIC: 캔버스 워커가 JPG로(기기가 풀 수 있으면 그대로) — 바꾼 파일로 지우고, 보기 창 원본도 바꾼 것으로
+      if (isHeic(file)) prepRef.current.set(id, handled(decodeHeic(file).then(jpg => {
+        if (jpg === file || !filesRef.current.has(id)) return;
+        filesRef.current.set(id, new File([jpg], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' }));
+        const url = URL.createObjectURL(jpg);
+        setBatchItems(prev => prev.map(i => {
+          if (i.id !== id) return i;
+          URL.revokeObjectURL(i.original);
+          return { ...i, original: url };
+        }));
+      })));
+      return item;
     });
     queueRef.current.push(...newItems.map(i => i.id));
     setBatchItems(prev => [...prev, ...newItems]);
@@ -207,6 +229,7 @@ export function useBatchProcessor() {
     runQueue();
     for (const it of newItems) {
       thumbsRef.current = thumbsRef.current.then(async () => {
+        await prepRef.current.get(it.id)?.catch(() => {});
         const file = filesRef.current.get(it.id);
         const thumb = file && await makeThumb(file);
         if (!filesRef.current.has(it.id)) { if (thumb) URL.revokeObjectURL(thumb); return; }   // 그새 비움
@@ -308,6 +331,34 @@ export function useBatchProcessor() {
     return p;
   };
 
+  // 받는 모습: 만들기 결과에 받기 설정(형식·크기·용량·사진 정보)을 씌움 — '그대로'면 다시 저장 안 함. 설정마다 기억
+  const finalRef = useRef<{ key: string; done: Map<string, Blob> }>({ key: '', done: new Map() });
+  const dlFor = (): DlOpts => (mode === 'product' ? { ...dl, side: 0 } : dl);
+  const getFinal = async (item: BatchItem): Promise<Blob | null> => {
+    const base = await getOutput(item);
+    if (!base || mode === 'sticker') return base;
+    const o = dlFor();
+    if (passThrough(o, base.type)) return base;
+    const key = `${specKey}|${JSON.stringify(o)}`;
+    if (finalRef.current.key !== key) finalRef.current = { key, done: new Map() };
+    const memo = finalRef.current, hit = memo.done.get(item.id);
+    if (hit) return hit;
+    const out = await shrinkOutput(base, o, filesRef.current.get(item.id) ?? null, '#ffffff');
+    if (finalRef.current === memo) memo.done.set(item.id, out);
+    return out;
+  };
+  // 받기 설정 창의 전·후 용량: 고른 사진을 지금 설정으로 만들어 봄(한 장씩, 다 되면 받기도 바로)
+  const estimate = async (onStep: (done: number, total: number, before: number, after: number) => void, alive: () => boolean) => {
+    const items = getSelectedItems();
+    let before = 0, after = 0, done = 0;
+    for (const it of items) {
+      if (!alive()) return;
+      const b = await getFinal(it).catch(() => null);
+      before += it.bytes; after += b?.size ?? 0; done++;
+      if (alive()) onStep(done, items.length, before, after);
+    }
+  };
+
   const getSelectedItems = () =>
     batchItems.filter(i => i.status === 'completed' && i.processed && selectedIds.has(i.id));
 
@@ -319,8 +370,8 @@ export function useBatchProcessor() {
       const { saveAs } = await (await import('file-saver')).default;
       const zip = new JSZip();
       for (const item of items) {
-        const blob = await getOutput(item);
-        if (blob) zip.file(singleFileName(item.fileName, spec), blob);
+        const blob = await getFinal(item);
+        if (blob) zip.file(singleFileName(item.fileName, spec, blob.type), blob);
       }
       // 사진은 이미 압축돼 있어서 ZIP은 담기만(STORE) — 다시 압축하면 시간만 듦
       const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
@@ -339,9 +390,9 @@ export function useBatchProcessor() {
     try {
       const { saveAs } = await (await import('file-saver')).default;
       for (const item of items) {
-        const blob = await getOutput(item);
+        const blob = await getFinal(item);
         if (!blob) continue;
-        saveAs(blob, singleFileName(item.fileName, spec));
+        saveAs(blob, singleFileName(item.fileName, spec, blob.type));
         // brief pause so the browser actually fires each download dialog
         await new Promise(r => setTimeout(r, 180));
       }
@@ -358,8 +409,8 @@ export function useBatchProcessor() {
     if (!item || item.status !== 'completed' || !item.processed) return;
     try {
       const { saveAs } = await (await import('file-saver')).default;
-      const blob = await getOutput(item);
-      if (blob) saveAs(blob, singleFileName(item.fileName, spec));
+      const blob = await getFinal(item);
+      if (blob) saveAs(blob, singleFileName(item.fileName, spec, blob.type));
     } catch (error) {
       console.error("현재 결과 다운로드 실패:", error);
     }
@@ -376,6 +427,8 @@ export function useBatchProcessor() {
     });
     for (const o of outRef.current.done.values()) URL.revokeObjectURL(o.url);
     outRef.current = { key: specKey, done: new Map(), pending: new Map() };
+    finalRef.current = { key: '', done: new Map() };
+    prepRef.current.clear();
     setBatchItems([]);
     setSelectedIndex(null);
     setSelectedIds(new Set());
@@ -467,6 +520,9 @@ export function useBatchProcessor() {
     setProduct,
     sticker,
     setSticker,
+    dl,
+    setDl,
+    estimate,
     selectedOutput,
     selectedItem,
     batchStatus,

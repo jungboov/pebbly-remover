@@ -5,6 +5,7 @@ import type { Mode, ProductOpts, StickerOpts } from '../_lib/post';
 import { OUTLINES, PRODUCT_SIZES, STICKER_SIZES } from '../_lib/post';
 import { useLang } from '../_lib/lang';
 import { ColorSheet } from './ColorSheet';
+import { Seg, Switch } from './Controls';
 import { IconPlus } from './Icons';
 import { T } from './T';
 
@@ -22,28 +23,6 @@ const BGS: { c: string; ko: string; en: string }[] = [
   { c: '#f2f2f2', ko: '연회색', en: 'Light' },
   { c: '#000000', ko: '검정', en: 'Black' },
 ];
-
-// 나눔 버튼(모드 탭과 같은 모양, 작게): 고른 칸은 흰 바탕
-function Seg<V extends string | number>({ items, value, onPick, label }: { items: { v: V; node: React.ReactNode }[]; value: V; onPick: (v: V) => void; label: string }) {
-  return (
-    <div className="seg" role="radiogroup" aria-label={label} style={{ '--n': items.length } as CSSProperties}>
-      {items.map(it => (
-        <button key={String(it.v)} type="button" role="radio" aria-checked={value === it.v} data-on={value === it.v} onClick={() => onPick(it.v)}>
-          {it.node}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// 켜고 끄기
-function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} className="switch" data-on={on} onClick={() => onChange(!on)}>
-      <i />
-    </button>
-  );
-}
 
 // 만들기: 지우기(투명 PNG) · 상품 사진(고른 색 · 정사각형 · 같은 여백, JPEG) · 스티커(흰 테두리 · 카톡 규격, 투명 PNG)
 // 바꾸면 다 지운 사진도 바로 다시 그림(모델은 안 다시 돌림)

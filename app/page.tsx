@@ -9,6 +9,9 @@ import { ThumbnailStrip } from './_components/ThumbnailStrip';
 import { ControlRow } from './_components/ControlRow';
 import { DragOverlay } from './_components/DragOverlay';
 import { ModeBar } from './_components/ModeBar';
+import { DownloadSheet, dlSummary } from './_components/DownloadSheet';
+import { useState } from 'react';
+import { useLang } from './_lib/lang';
 import { T } from './_components/T';
 
 // 화면: 머리(로고 · 한/영) / 보기 창 / 옆(상태 · 썸네일 · 받기) / 바닥 글
@@ -39,6 +42,9 @@ export default function Home() {
     setProduct,
     sticker,
     setSticker,
+    dl,
+    setDl,
+    estimate,
     selectedOutput,
     selectedItem,
     batchStatus,
@@ -54,6 +60,8 @@ export default function Home() {
   } = useBatchProcessor();
   // 파일 고르기를 열면 그동안 모델을 미리 받기 시작(폰은 이때가 처음)
   const pickFiles = () => { warmUp(); fileInputRef.current?.click(); };
+  const ko = useLang() === 'ko';
+  const [dlOpen, setDlOpen] = useState(false);   // 받기 설정 창
 
   return (
     <main className="app">
@@ -101,6 +109,20 @@ export default function Home() {
             onSelectAll={selectAll}
             onDeselectAll={deselectAll}
           />
+          {/* 받기 설정(줄여서 받기): 스티커는 카톡 규격 그대로라 없음 */}
+          {mode === 'sticker' ? (
+            <div className="dl-row" data-off="true"><span><T ko="받기 설정" en="Download settings" /></span><em><T ko="카톡 규격 그대로(PNG)" en="Kakao spec as is (PNG)" /></em></div>
+          ) : (
+            <button type="button" className="dl-row" onClick={() => setDlOpen(true)} aria-haspopup="dialog">
+              <span><T ko="받기 설정" en="Download settings" /></span>
+              <em>{dlSummary(dl, mode, ko)}<i aria-hidden="true">›</i></em>
+            </button>
+          )}
+          {dlOpen && mode !== 'sticker' && (
+            <DownloadSheet mode={mode} value={dl} onChange={setDl} count={selectedCount}
+              rev={`${mode}|${JSON.stringify(product)}|${[...selectedIds].join(',')}`} estimate={estimate}
+              onZip={handleDownloadZip} onFiles={handleDownloadIndividual} busy={isDownloading} onClose={() => setDlOpen(false)} />
+          )}
           <ControlRow
             selectedCount={selectedCount}
             isDownloading={isDownloading}
@@ -124,7 +146,7 @@ export default function Home() {
         ref={fileInputRef}
         hidden
         multiple
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         onChange={(e) => {
           if (e.target.files) handleFiles(e.target.files);
           e.target.value = '';
