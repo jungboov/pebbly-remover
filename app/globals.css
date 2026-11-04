@@ -14,6 +14,9 @@
   /* 투명한 곳을 보여 주는 바둑판 */
   --check-a:#141414;
   --check-b:#1f1f1f;
+  /* 칼선(인쇄소 관례: CutContour는 분홍으로 보임) · 시트 바깥 완칼 */
+  --cut:#ff3cac;
+  --die:#55d2ff;
   --logo:"MuseoModerno","Pretendard Variable",Pretendard,sans-serif;
   --ui:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   color-scheme:dark;
@@ -260,6 +263,64 @@ html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var
 .dl-zip{flex:1;height:44px}
 
 
+/* ── 도구 탭: 지우기 | 칼선 — 폰은 머리 아래 한 줄(밑줄이 머리 선 위에), PC는 머리 가운데 ── */
+.head{flex-wrap:wrap}
+.tools{order:3;flex:1 0 100%;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 -15px}
+.tools button{height:40px;border-bottom:1.5px solid var(--bd);color:var(--dim);font-size:14px;font-weight:700;letter-spacing:.01em;transition:color .2s,border-color .2s}
+.tools button:hover{color:var(--muted)}
+.tools button[data-on=true]{color:var(--text);border-color:var(--accent)}
+
+
+/* ── 칼선 탭: 시트 보기 · 그림 목록 · 설정 ── */
+.cv-frame{position:absolute;inset:16px 16px 46px}
+.cv-page{display:block;width:100%;height:100%;filter:drop-shadow(0 8px 18px rgba(0,0,0,.55))}
+.cv-cut{fill:none;stroke:var(--cut);stroke-width:1.2px;vector-effect:non-scaling-stroke}
+.cv-die{fill:none;stroke:var(--die);stroke-width:1.2px;vector-effect:non-scaling-stroke}
+.cv-st{cursor:pointer}
+.cv-st:hover .cv-cut{stroke-width:2.4px}
+.cv-chip{position:absolute;z-index:2;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.2);font-size:11px;letter-spacing:.02em;white-space:nowrap;backdrop-filter:blur(6px)}
+.cv-tl{left:12px;top:12px}
+.cv-br{right:12px;bottom:12px}
+.cv-warn{top:44px;color:var(--bad);border-color:rgba(255,107,107,.45)}
+.cv-pages{position:absolute;z-index:2;left:50%;bottom:9px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:2px;border:1px solid var(--bd);border-radius:999px;background:rgba(0,0,0,.65);font-size:11px}
+.cv-pages button{width:28px;height:28px;border-radius:50%;font-size:16px;line-height:1;color:var(--muted)}
+.cv-pages button:hover:not(:disabled){color:var(--text);background:#1a1a1a}
+.cv-pages button:disabled{opacity:.3}
+.cv-import{position:absolute;z-index:2;left:50%;bottom:22px;transform:translateX(-50%);padding:9px 16px;border:1.25px dashed #4a4a4a;border-radius:14px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;white-space:nowrap;transition:border-color .2s}
+.cv-import:hover{border-color:var(--accent)}
+.cv-import-row{position:static;transform:none;width:100%;background:none}
+.cut-list{display:none}
+.cl-item{flex:none;display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--bd);border-radius:14px;text-align:left;transition:border-color .2s}
+.cl-item:hover{border-color:#3a3a3a}
+.cl-item[data-state=error]{border-color:rgba(255,107,107,.5)}
+.cl-th{flex:none;width:44px;height:44px;border-radius:10px;overflow:hidden;background:repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0/10px 10px}
+.cl-th img,.cut-th img{width:100%;height:100%;object-fit:contain}
+.cl-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-name small{font-size:10.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis}
+.cl-add{flex:none;display:flex;align-items:center;justify-content:center;gap:6px;height:44px;border:1.25px dashed #4a4a4a;border-radius:14px;color:var(--muted);font-size:12px;transition:color .2s,border-color .2s}
+.cl-add:hover{color:var(--text);border-color:var(--accent)}
+.cut-th{background:repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0/10px 10px}
+.cut-th[data-state=prep] img,.cut-th[data-state=removing] img{opacity:.4}
+.th-count{position:absolute;right:4px;top:4px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:10px;display:grid;place-items:center}
+.opt-u{flex:none;width:22px;color:var(--dim);font-size:11px;font-family:var(--logo)}
+.cut-info{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:0 4px;font-size:12px;color:var(--muted)}
+.cut-info b{color:var(--text);font-weight:500}
+.cut-acts{grid-template-columns:1fr auto}
+.cut-acts .btn-main span{margin-left:2px;font-weight:400}
+.ci-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-prev{position:relative;flex:none;height:min(220px,30vh);border:1px solid var(--bd);border-radius:16px;overflow:hidden;display:grid;place-items:center;background:repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0/12px 12px}
+.ci-prev svg{width:88%;height:88%}
+.ci-wait{font-size:12px;color:var(--muted)}
+.ci-chip{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px dashed #3a3a3a;border-radius:12px;font-size:12px;color:var(--muted)}
+.ci-chip button{flex:none;margin-left:auto;padding:7px 12px;border:1px solid var(--accent);border-radius:10px;color:var(--text);font-weight:600;font-size:12px;transition:background .2s,color .2s}
+.ci-chip button:hover{background:var(--accent);color:var(--on-accent)}
+.stepper{flex:none;display:flex;align-items:center;border:1px solid var(--bd);border-radius:11px}
+.stepper button{width:34px;height:30px;font-size:16px;color:var(--muted);transition:color .2s}
+.stepper button:hover:not(:disabled){color:var(--text)}
+.stepper button:disabled{opacity:.3}
+.stepper b{min-width:26px;text-align:center;font-size:13px}
+
+
 /* ── 받기 버튼 ── */
 .actions{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;border-radius:14px;border:1px solid rgba(255,255,255,.5);font-size:14px;font-weight:600;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,opacity .2s}
@@ -309,4 +370,9 @@ html[data-intro=off] .pi{display:none}
   .thumbs{min-height:0;flex-wrap:wrap;align-content:flex-start;overflow-x:hidden;overflow-y:auto}
   .thumb{width:72px;height:72px;border-radius:16px}
   .foot{justify-content:space-between;padding-top:14px}
+  .tools{order:0;flex:0 0 240px;margin:0 0 -21px}
+  .cut-work{grid-template-columns:220px minmax(0,1fr) 320px}
+  .cut-list{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;padding:1px}
+  .cut-strip{display:none}
+  .cut-side{overflow-y:auto}
 }

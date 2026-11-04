@@ -7,7 +7,7 @@ import { decodeHeic, makeThumb, renderOutput, shrinkOutput } from '../_lib/canva
 import { isHeic } from '../_lib/heic';
 import { extOf, passThrough, type DlOpts } from '../_lib/shrink';
 import type { Mode, ProductOpts, StickerOpts, Spec, Src } from '../_lib/post';
-import { setOutSettings, useOutSettings } from '../_lib/outSettings';
+import { getOutSettings, setOutSettings, useOutSettings } from '../_lib/outSettings';
 
 export interface BatchItem {
   id: string;
@@ -48,7 +48,8 @@ function singleFileName(originalName: string, spec: Spec | null, type: string): 
 }
 
 
-export function useBatchProcessor() {
+// dropTo: 끌어 놓은 파일을 받을 곳(칼선 탭이면 그쪽) — 없으면 지우기 줄
+export function useBatchProcessor(dropTo?: { current: ((files: FileList) => void) | null }) {
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -74,6 +75,7 @@ export function useBatchProcessor() {
   const currentRef = useRef<string | null>(null);
   const thumbsRef = useRef<Promise<void>>(Promise.resolve());
   const prepRef = useRef(new Map<string, Promise<void>>());   // 아이폰 사진(HEIC)을 JPG로 바꾸는 중(바꾼 파일이 filesRef에 들어감)
+  const waitersRef = useRef(new Map<string, { resolve: (b: Blob) => void; reject: (e: Error) => void }>());   // 칼선 탭이 맡긴 사진(다 지우면 결과를 넘김)
 
   // 지우기는 웹 워커에서(engine.ts — 안 되는 브라우저는 화면 스레드). 처음 쓸 때 만듦
   // 진행: 모델 받기(받은 바이트 / 모델+wasm 전체) · 지금 사진(풀기 10 → 모델 입력 20 → 마스크 80 → 다 됨 100)
@@ -96,6 +98,7 @@ export function useBatchProcessor() {
   useEffect(() => {
     const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
     if (saveData || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    if (getOutSettings().tool === 'cut') return;   // 칼선 탭으로 왔으면 투명 PNG만 쓸 수도 있어서 미리 안 받음
     let t = 0;
     const wait = () => {
       if (document.getElementById('intro')) { t = window.setTimeout(wait, 500); return; }
@@ -126,6 +129,8 @@ export function useBatchProcessor() {
         console.error("모델 오류:", e);
         modelFailedRef.current = true;
         setModelStatus('error');
+        for (const w of waitersRef.current.values()) w.reject(new Error('model'));
+        waitersRef.current.clear();
         return;
       }
       setModelStatus('ready');
@@ -144,9 +149,13 @@ export function useBatchProcessor() {
           const url = URL.createObjectURL(blob);
           lastCompletedIdRef.current = id;
           patchItem(id, { processed: url, cutout: blob, mask, size, status: 'completed', progress: 100, completedAt: Date.now() });
+          waitersRef.current.get(id)?.resolve(blob);
+          waitersRef.current.delete(id);
         } catch (e) {
           console.error("처리 오류:", e);
           if (filesRef.current.has(id)) patchItem(id, { status: 'error' });
+          waitersRef.current.get(id)?.reject(e instanceof Error ? e : new Error(String(e)));
+          waitersRef.current.delete(id);
         }
       }
     } finally {
@@ -196,7 +205,7 @@ export function useBatchProcessor() {
     runQueue();
   };
 
-  const handleFiles = (files: FileList | File[]) => {
+  const handleFiles = (files: FileList | File[]): string[] => {
     const startIdx = batchItems.length;
     // 끌어 놓기로 들어온 이미지 아닌 파일은 거름
     let filesArray = Array.from(files).filter(f => f.type.startsWith('image/') || isHeic(f));
@@ -205,7 +214,7 @@ export function useBatchProcessor() {
       console.warn(`한 번에 ${MAX_BATCH}장까지 — 초과분 ${filesArray.length - Math.max(room, 0)}장 무시됨.`);
       filesArray = filesArray.slice(0, Math.max(room, 0));
     }
-    if (filesArray.length === 0) return;
+    if (filesArray.length === 0) return [];
     const newItems: BatchItem[] = filesArray.map(file => {
       const id = crypto.randomUUID();
       filesRef.current.set(id, file);
@@ -236,7 +245,17 @@ export function useBatchProcessor() {
         patchItem(it.id, { thumb: thumb ?? it.original });
       });
     }
+    return newItems.map(i => i.id);
   };
+
+  // 칼선 탭: 사진 한 장의 배경을 지움(이 줄에 넣어서 — 지우기 탭에도 보임). 줄이 꽉 차면 null
+  const removeForCut = (file: File): { id: string; done: Promise<Blob> } | null => {
+    const [id] = handleFiles([file]);
+    if (!id) return null;
+    const done = new Promise<Blob>((resolve, reject) => waitersRef.current.set(id, { resolve, reject }));
+    return { id, done };
+  };
+  const progressOf = (id: string) => batchItems.find(i => i.id === id)?.progress;
 
   // 끌어 놓기: 한 번만 붙이고, 놓을 때는 그때의 handleFiles를 부름
   const handleFilesRef = useRef(handleFiles);
@@ -246,7 +265,7 @@ export function useBatchProcessor() {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(true);
-      warmUp();   // 끌어 오는 동안 모델 미리 받기(여러 번 불러도 한 번만 받음)
+      if (!dropTo?.current) warmUp();   // 끌어 오는 동안 모델 미리 받기(여러 번 불러도 한 번만 받음)
     };
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
@@ -258,7 +277,7 @@ export function useBatchProcessor() {
       e.stopPropagation();
       setIsDragging(false);
       if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-        handleFilesRef.current(e.dataTransfer.files);
+        (dropTo?.current ?? handleFilesRef.current)(e.dataTransfer.files);
       }
     };
 
@@ -270,7 +289,7 @@ export function useBatchProcessor() {
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("drop", handleDrop);
     };
-  }, [warmUp]);
+  }, [warmUp, dropTo]);
 
   const toggleSelection = (id: string) => {
     const item = batchItems.find(i => i.id === id);
@@ -429,6 +448,8 @@ export function useBatchProcessor() {
     outRef.current = { key: specKey, done: new Map(), pending: new Map() };
     finalRef.current = { key: '', done: new Map() };
     prepRef.current.clear();
+    for (const w of waitersRef.current.values()) w.reject(new Error('cleared'));
+    waitersRef.current.clear();
     setBatchItems([]);
     setSelectedIndex(null);
     setSelectedIds(new Set());
@@ -535,5 +556,7 @@ export function useBatchProcessor() {
     handleDownloadCurrent,
     handleClearCache,
     handleRetryModel,
+    removeForCut,
+    progressOf,
   };
 }

@@ -17,6 +17,14 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
   - 용량 그대로·품질(50~100)·목표 용량(500KB·1MB·2MB·직접 — 품질을 반씩 좁혀 맞추고, PNG는 256색, 그래도 넘으면 크기를 줄임)
   - 위치 정보 지우기(기본 켬: 다시 저장하면 사진 정보가 다 빠짐). 끄면 원본 JPG의 사진 정보(EXIF·GPS)를 결과 JPG에 다시 붙임(방향 값은 1)
   - 고른 사진의 전·후 용량을 시트에서 미리 셈(캔버스 워커, 다 센 것은 받을 때 그대로). 스티커는 카톡 규격 그대로라 없음
+- 칼선 탭(맨 위 '지우기 | 칼선', 안 B 따로 탭 — 시안 2026-11-04): 스티커·굿즈 재단선을 그려 인쇄소·커팅기 파일로 (`app/_lib/cutline.ts` · `sheet.ts` · `cutArt.ts` · `cutExport.ts`, `app/_hooks/useCutSheet.ts`, `app/_components/CutView.tsx` · `CutPanel.tsx`)
+  - 넣기: 투명 PNG는 바로(모델 안 받음, 그림 부분만 잘라 긴 변 2000px까지) · 투명 없는 사진은 네모 스티커, '배경 지우기'를 누르면 지우기 줄에 넣어 지운 뒤 그 결과로 · 지우기 탭에서 지운 사진 가져오기
+  - 칼선 계산(캔버스 워커): 반 넘게 불투명한 곳 → 작은 조각(가장 큰 것의 2% 아래) 빼기 · 구멍 메우기 → 간격만큼 넓히기(거리 변환) → 오목한 곳 반지름 1mm로(닫기) → 마칭 스퀘어 → 이동 평균(픽셀 그림 계단의 잔물결) → RDP 0.05mm → 베지에(거리 비례 접선). 격자는 10칸/mm까지
+  - 그림마다 개수·크기(스티커 긴 변 30·50·70·직접 mm)·구멍 메우기, 공통으로 칼선 간격(1.5·2.5·4·직접 mm)·종이(A4·A5·Letter)·개수대로/한 장 가득·바깥 완칼
+  - 시트(`sheet.ts`): 줄줄이 상자 쌓기(줄마다 가운데). 바깥 완칼은 종이 4mm 안쪽 R4, 반칼은 거기서 4mm 더 안쪽(레드프린팅: 재단선에서 3mm 이상), 반칼끼리 5mm(와우프레스 도무송 작업방법). 넘치면 다음 장
+  - 받기: PDF(층 셋 Art·CutContour/KissCut·DieCut, 그림 300dpi RGB+투명값, 칼선 틀 CutContour 별색 0.25pt 겹쳐찍기 · M100 0.5pt · K100 0.5pt) · SVG(mm, 그림 PNG를 안에) · DXF(R12 꺾은선 + 같은 크기 시트 PNG 300dpi) · PNG(스티커 낱장, 흰 테두리까지, 300dpi pHYs). SVG·DXF는 그림·반칼·완칼 나눠 받기
+  - 시트를 그림 한 장으로 그리지 않음: PDF·SVG는 스티커마다 그림을 따로 넣고 자리만 mm로(아이폰 캔버스 한도 4096² 걱정 없음). 큰 그림은 DXF 짝 시트 PNG(A4 300dpi 2480×3508)뿐
+  - 확인 못 한 것: 실제 인쇄소 접수·별색 인식(VersaWorks), 크리컷이 SVG mm·안의 그림을 그대로 읽는지, 실루엣 무료판 DXF 단위, RGB PDF를 받는지(CMYK 변환 없음)
 - 아이폰 사진(HEIC·HEIF): 기기가 풀 수 있으면 그대로, 아니면 [libheif-js](https://github.com/catdad-experiments/libheif-js) 1.23.5(LGPL-3.0, libheif)로 풀어 JPG(0.95)로 바꾼 뒤 지움(`app/_lib/heic.ts`). HEIC가 들어올 때만 따로 받는 조각(wasm 1.46MB, 압축 약 0.4MB)
   - 시험해 보고 안 넣은 것(2026-11-04): BiRefNet_lite(MIT, 114MB) — 물건은 더 꽉 차게 잡지만 브라우저 onnxruntime(1.21·1.31)에서 GPU는 셰이더 버퍼 한도(16)·CPU는 메모리(4GB) 때문에 1024로 못 돌림. 주인공 하나만 남기기·확대해 한 번 더 지우기는 사진마다 들쭉날쭉해서 뺌
 - 지우기: ISNet fp16 모델(88MB — IMG.LY가 공개한 [@imgly/background-removal-data](https://github.com/imgly/background-removal-js) 1.7.0, 그쪽 CDN) + onnxruntime-web 1.21.0 wasm(이 사이트에서, Cloudflare brotli로 CPU 2.3MB · GPU 5.0MB)
@@ -50,7 +58,7 @@ npm run build      # out/ 에 정적 파일
 - 사용자 지정 도메인 `remover.pebblylabs.com` (Worker › 설정 › 도메인 및 경로)
 
 ## 폴더
-- `app/page.tsx` 화면 틀 · `app/_hooks/useBatchProcessor.ts` 처리 줄·받기 · `app/_components/` 부품
+- `app/page.tsx` 화면 틀(지우기 | 칼선 탭) · `app/_hooks/useBatchProcessor.ts` 처리 줄·받기 · `app/_components/` 부품
 - `app/_lib/engine.ts` 지우기를 워커/화면 스레드 어디서 돌릴지 · `app/_lib/remover.worker.ts` 워커 · `app/_lib/model.ts` 모델 받기·열기(GPU/CPU) · `app/_lib/pipeline.ts` 한 장 처리(줄이기·합치기) · `app/_lib/post.ts` 상품 사진·스티커 · `app/_lib/canvas.worker.ts`·`canvasJobs.ts` 썸네일·후처리 워커 · `app/_components/ModeBar.tsx` 만들기 칸
 - `app/_components/Intro.tsx` 번호 인트로(부품 부름) · `app/_lib/intro.ts` 정적 첫 장면 · `app/_lib/boot.ts` 그리기 전 스크립트(한/영·인트로·설치 앱 첫 장면) · `app/_lib/lang.ts` 한/영
 - `scripts/og-image.mjs` 공유 이미지

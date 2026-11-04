@@ -47,7 +47,7 @@ function dt1(f: Float32Array, n: number, d: Float32Array, v: Int32Array, z: Floa
     d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
   }
 }
-function distance2(inside: (i: number) => boolean, w: number, h: number): Float32Array {
+export function distance2(inside: (i: number) => boolean, w: number, h: number): Float32Array {
   const g = new Float32Array(w * h), m = Math.max(w, h);
   const f = new Float32Array(m), d = new Float32Array(m), v = new Int32Array(m), z = new Float32Array(m + 1);
   for (let i = 0; i < w * h; i++) g[i] = inside(i) ? 0 : INF;
@@ -65,7 +65,7 @@ function distance2(inside: (i: number) => boolean, w: number, h: number): Float3
 }
 
 // 덩어리 나누기(4방향): 칸마다 덩어리 번호(-1 = 밖), 덩어리마다 넓이
-function components(bin: Uint8Array, w: number, h: number): { lab: Int32Array; area: number[] } {
+export function components(bin: Uint8Array, w: number, h: number): { lab: Int32Array; area: number[] } {
   const lab = new Int32Array(w * h).fill(-1), q = new Int32Array(w * h), area: number[] = [];
   for (let i = 0; i < w * h; i++) {
     if (!bin[i] || lab[i] >= 0) continue;
@@ -267,7 +267,7 @@ const CRC = (() => {
   for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
   return t;
 })();
-function chunk(type: string, data: Uint8Array): Uint8Array {
+export function chunk(type: string, data: Uint8Array): Uint8Array {
   const out = new Uint8Array(12 + data.length), dv = new DataView(out.buffer);
   dv.setUint32(0, data.length);
   for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
