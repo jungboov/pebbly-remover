@@ -8,6 +8,7 @@
      size     (w, h) => 로고 폭(px)            기본: 화면 폭 84% · 세로 1.1배 · 1000px 중 작은 것
      splash   첫 장면 배율. 'auto'(기본) = 안드로이드 12+에 설치한 앱이면 1.73(시스템 시작 화면이 아이콘을 띄우는 크기, 폴드8 녹화로 잼)
               + standalone이면 상태바 절반만큼 올려서, 가로면 카메라 구멍 쪽 띠 절반만큼 옮겨서 시작(시작 화면 아이콘과 같은 자리), 가로 배율 1.81
+              큰 화면(짧은 변 600px 이상 — 폴드를 펼친 화면·태블릿)은 세로·가로 모두 1.714
      skip     누르거나 키를 누르면 바로 사라짐(기본 true). 누름은 root 밖으로 안 넘김(제품의 밀기·두 번 탭과 안 섞이게)
      T        시간 표(ms) 일부만 바꿀 때        onStart  펼쳐지기 시작할 때      onDone   다 사라진 뒤(기본: root를 지움)
      late     숫자가 멈춘 뒤 이름(기본 true). false = 예전 순서(펼쳐질 때 이름까지 다 나오고 스파인 칸에서 숫자가 돎)
@@ -66,9 +67,11 @@ function pebblyIntro(root, opts = {}) {
   //   상태바 = 화면 높이 − 보이는 높이(아래 내비게이션 바는 제스처라 0). 64px 넘게 차이 나면(버튼식 내비게이션 바) 셈이 안 맞아 그대로. fullscreen(미러)은 0
   // 가로(dx): 상태바는 앱 위에 겹쳐 세로는 0인데, 앱이 카메라 구멍 쪽 띠(약 47px)를 비우고 그려져 가운데가 그 절반만큼 반대쪽
   //   → 구멍 쪽으로 옮겨서 시작. 구멍은 세로일 때 위 — 화면 각도 90(위가 왼쪽)이면 왼쪽, 270이면 오른쪽. 크기도 가로 시작 화면이 5% 커서 1.81(00 가로 녹화로 잼)
+  // 큰 화면(짧은 변 600px 이상 = 안드로이드가 태블릿으로 보는 크기 — 폴드를 펼친 화면): 시작 화면 아이콘이 약 217px(접은 화면 세로와 거의 같음)
+  //   → 1.714(03 펼친 가로 녹화로 잼: 1.81이면 상자가 5.3% 커서 '숫자가 나왔다가 크기가 바뀌는' 듯 보였음). 펼친 세로는 아직 못 봐서 같은 값
   let s = typeof splash === 'number' ? splash : 1, dx = 0, dy = 0, started = 0;
   if (splash === 'auto' && /Android/.test(navigator.userAgent) && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
-    s = innerWidth > innerHeight ? 1.81 : 1.73;
+    s = Math.min(screen.width, screen.height) >= 600 ? 1.714 : innerWidth > innerHeight ? 1.81 : 1.73;
     const gy = screen.height - innerHeight, gx = screen.width - innerWidth, ang = screen.orientation ? screen.orientation.angle : 0;
     if (gy > 0 && gy <= 64) dy = -gy / 2;
     if (gx > 0 && gx <= 64) dx = (ang === 90 ? -1 : ang === 270 ? 1 : 0) * gx / 2;

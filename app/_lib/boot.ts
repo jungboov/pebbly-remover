@@ -4,9 +4,10 @@ export const INTRO_KEY = 'pebbly-remover-intro';
 
 // 한/영: 저장한 말 → 없으면 브라우저 말(한국어면 ko, 아니면 en). 글자는 두 말을 다 그려 두고 CSS가 <html lang>에 맞춰 하나만 보임
 // 인트로: 이번 탭에서 이미 봤으면 data-intro="off"로 숨김(?intro를 붙이면 다시)
-// 설치 앱(안드로이드): data-splash — 정적 첫 장면을 부품과 같이 시스템 시작 화면 크기(1.73배)로 (안드로이드 11 이하는 부품이 곧 1배로 되돌림)
+// 설치 앱(안드로이드): data-splash — 정적 첫 장면을 부품과 같이 시스템 시작 화면 크기(1.73배, 큰 화면 1.714)로 (안드로이드 11 이하는 부품이 곧 1배로 되돌림)
 //   부품과 같은 셈으로: --pi-dy 상태바 절반만큼 위(상태바 = 화면 높이 − 보이는 높이, 0~64px일 때만. fullscreen이면 0)
-//   가로면 --pi-s 1.81(가로 시작 화면 아이콘이 5% 큼), --pi-dx 카메라 구멍 쪽 띠(화면 폭 − 보이는 폭, 0~64px) 절반만큼 구멍 쪽(화면 각도 90 왼쪽 · 270 오른쪽)
+//   큰 화면(짧은 변 600px 이상 — 폴드를 펼친 화면·태블릿)은 세로·가로 모두 --pi-s 1.714(펼친 가로 녹화로 잼)
+//   아니면 가로일 때 --pi-s 1.81(가로 시작 화면 아이콘이 5% 큼), --pi-dx 카메라 구멍 쪽 띠(화면 폭 − 보이는 폭, 0~64px) 절반만큼 구멍 쪽(화면 각도 90 왼쪽 · 270 오른쪽)
 // 함수로 써 두고 글자로 바꿔 넣음 — 템플릿 문자열로 쓰면 빌드 압축기가 가운데를 잘라 먹음(SyntaxError)
 function boot(langKey: string, introKey: string) {
   const h = document.documentElement, ko = /^ko/i.test(navigator.language);
@@ -22,7 +23,8 @@ function boot(langKey: string, introKey: string) {
   if (/Android/.test(navigator.userAgent) && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
     h.dataset.splash = '1';
     const gy = screen.height - innerHeight, gx = screen.width - innerWidth, ang = screen.orientation ? screen.orientation.angle : 0;
-    if (innerWidth > innerHeight) h.style.setProperty('--pi-s', '1.81');
+    if (Math.min(screen.width, screen.height) >= 600) h.style.setProperty('--pi-s', '1.714');
+    else if (innerWidth > innerHeight) h.style.setProperty('--pi-s', '1.81');
     if (gy > 0 && gy <= 64) h.style.setProperty('--pi-dy', -gy / 2 + 'px');
     if (gx > 0 && gx <= 64 && (ang === 90 || ang === 270)) h.style.setProperty('--pi-dx', (ang === 90 ? -1 : 1) * gx / 2 + 'px');
   }
