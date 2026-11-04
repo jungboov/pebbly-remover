@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import JSZip from 'jszip';
 import { createEngine, type Engine } from '../_lib/engine';
 import { makeThumb, renderOutput } from '../_lib/canvasJobs';
-import type { Box, Mode, ProductOpts, StickerOpts, Spec } from '../_lib/post';
+import type { Mode, ProductOpts, StickerOpts, Spec, Src } from '../_lib/post';
 import { setOutSettings, useOutSettings } from '../_lib/outSettings';
 
 export interface BatchItem {
@@ -12,8 +12,9 @@ export interface BatchItem {
   original: string;
   thumb?: string;   // 썸네일용 작은 그림 — 만들기 전엔 빈 칸(원본 10장을 그대로 띄우면 풀고 그리느라 화면이 멈춤), 못 만들면 original
   processed: string | null;   // 지운 결과(투명 PNG) 주소
-  cutout?: Blob;              // 그 파일 — 상품 사진·스티커로 다시 그릴 때
-  box?: Box | null;           // 물체가 있는 상자(결과 화소)
+  cutout?: Blob;              // 그 파일
+  mask?: Uint8Array;          // 모델 마스크(1024², 0~255) — 상품 사진·스티커는 원본 + 이것에서 다시 그림
+  size?: [number, number];    // 원본 크기
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress: number;
   fileName: string;
@@ -128,11 +129,11 @@ export function useBatchProcessor() {
         currentRef.current = id;
         patchItem(id, { status: 'processing', progress: 0, startedAt: Date.now() });
         try {
-          const { blob, box } = await getEngine().run(file);
+          const { blob, mask, size } = await getEngine().run(file);
           if (!filesRef.current.has(id)) continue;   // 처리 중에 비움
           const url = URL.createObjectURL(blob);
           lastCompletedIdRef.current = id;
-          patchItem(id, { processed: url, cutout: blob, box, status: 'completed', progress: 100, completedAt: Date.now() });
+          patchItem(id, { processed: url, cutout: blob, mask, size, status: 'completed', progress: 100, completedAt: Date.now() });
         } catch (e) {
           console.error("처리 오류:", e);
           if (filesRef.current.has(id)) patchItem(id, { status: 'error' });
@@ -285,13 +286,17 @@ export function useBatchProcessor() {
   const getOutput = async (item: BatchItem): Promise<Blob | null> => {
     if (!item.cutout) return null;
     if (!spec) return item.cutout;
+    // 원본 파일 + 마스크에서 다시 그림(비우면 원본이 없어서 못 그림)
+    const file = filesRef.current.get(item.id);
+    if (!file || !item.mask || !item.size) return null;
+    const src: Src = { file, mask: item.mask, size: item.size };
     const out = outRef.current;
-    if (out.key !== specKey) return renderOutput(item.cutout, item.box ?? null, spec);   // 설정이 막 바뀜(기억은 다음 그림부터)
+    if (out.key !== specKey) return renderOutput(src, spec, item.id);   // 설정이 막 바뀜(기억은 다음 그림부터)
     const hit = out.done.get(item.id);
     if (hit) return hit.blob;
     let p = out.pending.get(item.id);
     if (!p) {
-      p = renderOutput(item.cutout, item.box ?? null, spec);
+      p = renderOutput(src, spec, item.id);
       out.pending.set(item.id, p);
       p.then(blob => {
         if (outRef.current !== out) return;

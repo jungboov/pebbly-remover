@@ -1,20 +1,21 @@
-// 후처리: 지운 결과(투명 PNG + 물체 상자)를 상품 사진·스티커로 다시 그림 — 모델은 다시 안 돌림
+// 후처리: 지운 사진을 상품 사진·스티커로 다시 그림 — 모델은 다시 안 돌림
+// 원본 사진 + 모델 마스크(1024²)에서: 마스크를 다듬고(작은 조각 지우기·속 채우기) 물체만 잘라 원본 화소로 그림(옅은 곳 색이 안 깨지게)
 // 캔버스 워커(canvas.worker.ts)에서 돌아서 화면이 안 멈춤(워커를 못 쓰면 화면 스레드에서 같은 코드)
 import { canvas, ctx2d, encode, free, type Canvas } from './canvas';
 
-// 물체 상자(결과 화소) + 결과 전체 크기(W·H — 물체가 사진 가장자리에 닿았는지 볼 때)
-export type Box = [x: number, y: number, w: number, h: number, W: number, H: number];
 export type Mode = 'cut' | 'product' | 'sticker';
-// 상품 사진: 고른 색 바탕 · 정사각형 · 모든 사진 같은 여백(한 변의 비율)
-export type ProductOpts = { bg: string; size: number; pad: number };
-// 스티커: 흰 테두리(한 변의 비율, 0이면 없음) · 크기(STICKER_SIZES)
-export type StickerOpts = { outline: number; size: number };
+// 상품 사진: 고른 색 바탕 · 정사각형 · 모든 사진 같은 여백(한 변의 비율) · 속 채우기
+export type ProductOpts = { bg: string; size: number; pad: number; fill: boolean };
+// 스티커: 흰 테두리(한 변의 비율, 0이면 없음) · 크기(STICKER_SIZES) · 속 채우기
+export type StickerOpts = { outline: number; size: number; fill: boolean };
 export type Spec = { mode: 'product'; opts: ProductOpts } | { mode: 'sticker'; opts: StickerOpts };
+// 다시 그릴 재료: 원본 사진 파일 · 모델 마스크(1024×1024, 0~255, 사진 전체를 비율 무시하고 늘린 자리) · 원본 크기
+export type Src = { file: Blob; mask: Uint8Array; size: [w: number, h: number] };
 
-export const PRODUCT_DEFAULT: ProductOpts = { bg: '#ffffff', size: 1000, pad: 0.08 };
+export const PRODUCT_DEFAULT: ProductOpts = { bg: '#ffffff', size: 1000, pad: 0.08, fill: true };
 export const PRODUCT_SIZES = [1000, 1500, 2000];
 // 테두리: 없음 · 얇게 · 보통 · 두껍게(한 변의 비율 — 360px에서 0 · 5 · 9 · 14px)
-export const STICKER_DEFAULT: StickerOpts = { outline: 0.025, size: 360 };
+export const STICKER_DEFAULT: StickerOpts = { outline: 0.025, size: 360, fill: true };
 export const OUTLINES = [0, 0.015, 0.025, 0.04];
 
 // 카카오톡 이모티콘 규격 — 카카오 이모티콘 스튜디오 '이모티콘 유형별 이미지 가이드'(https://kakaoemoticonstudio.notion.site/image-guide, 2026-11-04 확인)
@@ -28,35 +29,9 @@ export const STICKER_SIZES: { size: number; maxBytes?: number; ko: string; en: s
   { size: 1000, ko: '크게 1000', en: 'Large 1000' },
 ];
 
-// 물체만 잘라 dw×dh로 줄인(또는 늘린) 그림 — 자르기·줄이기를 풀 때 한 번에(큰 사진도 원본 크기 캔버스를 안 만듦)
-async function subject(cutout: Blob, box: Box | null, fit: number): Promise<{ bmp: ImageBitmap; w: number; h: number }> {
-  let [bx, by, bw, bh] = box ?? [0, 0, 0, 0, 0, 0];
-  if (!box) { const b = await createImageBitmap(cutout); [bx, by, bw, bh] = [0, 0, b.width, b.height]; b.close(); }
-  const k = fit / Math.max(bw, bh);
-  const w = Math.max(1, Math.round(bw * k)), h = Math.max(1, Math.round(bh * k));
-  const bmp = await createImageBitmap(cutout, bx, by, bw, bh, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
-  return { bmp, w, h };
-}
+const M = 1024;   // 마스크 한 변
 
-// 상품 사진: 한 변 size, 여백 pad(한 변의 비율) 안에 물체의 긴 쪽을 꽉 차게, 가운데. 바탕이 있으니 JPEG
-// 물체가 사진 아래 끝에서 잘려 있으면(사람 상반신 등) 가운데 떠 있지 않게 아래에 붙임
-async function product(cutout: Blob, box: Box | null, o: ProductOpts): Promise<Blob> {
-  const S = o.size, pad = Math.round(S * o.pad), inner = Math.max(1, S - 2 * pad);
-  const { bmp, w, h } = await subject(cutout, box, inner);
-  const c = canvas(S, S), x = ctx2d(c);
-  x.fillStyle = o.bg;
-  x.fillRect(0, 0, S, S);
-  const cutAtBottom = !!box && box[1] + box[3] >= box[5] - 1;
-  x.drawImage(bmp, Math.round((S - w) / 2), cutAtBottom ? S - h : Math.round((S - h) / 2), w, h);   // 크기를 적어 둠: 줄이기 옵션을 무시하는 브라우저도 맞게
-  bmp.close();
-  try {
-    return await encode(c, 'image/jpeg', 0.92);
-  } finally {
-    free(c);
-  }
-}
-
-// 거리 변환(Felzenszwalb): 물체 밖 각 화소에서 가장 가까운 물체 화소까지 거리의 제곱
+// 거리 변환(Felzenszwalb): 각 화소에서 가장 가까운 '안' 화소까지 거리의 제곱
 const INF = 1e20;
 function dt1(f: Float32Array, n: number, d: Float32Array, v: Int32Array, z: Float32Array) {
   let k = 0;
@@ -89,29 +64,124 @@ function distance2(inside: (i: number) => boolean, w: number, h: number): Float3
   return g;
 }
 
+// 덩어리 나누기(4방향): 칸마다 덩어리 번호(-1 = 밖), 덩어리마다 넓이
+function components(bin: Uint8Array, w: number, h: number): { lab: Int32Array; area: number[] } {
+  const lab = new Int32Array(w * h).fill(-1), q = new Int32Array(w * h), area: number[] = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!bin[i] || lab[i] >= 0) continue;
+    const id = area.length;
+    let qh = 0, qt = 0;
+    q[qt++] = i; lab[i] = id;
+    while (qh < qt) {
+      const j = q[qh++], x = j % w;
+      if (x > 0 && bin[j - 1] && lab[j - 1] < 0) { lab[j - 1] = id; q[qt++] = j - 1; }
+      if (x < w - 1 && bin[j + 1] && lab[j + 1] < 0) { lab[j + 1] = id; q[qt++] = j + 1; }
+      if (j >= w && bin[j - w] && lab[j - w] < 0) { lab[j - w] = id; q[qt++] = j - w; }
+      if (j < w * (h - 1) && bin[j + w] && lab[j + w] < 0) { lab[j + w] = id; q[qt++] = j + w; }
+    }
+    area.push(qt);
+  }
+  return { lab, area };
+}
+
+// 마스크 다듬기 — 상품 사진·스티커는 '물건 하나'라서
+//  1) 작은 조각 지우기: 가장 큰 덩어리의 2%보다 작은 조각(워터마크·티끌)과 그 옅은 둘레(6칸)를 지움 — 옅어도 큰 덩어리 곁에 있는 것은 남김
+//  2) 속 채우기(fill): 윤곽 안쪽 깊은 곳(3~8칸 안부터)의 반투명을 불투명으로 — 보석·투명 끈처럼 모델이 애매하게 본 곳. 진짜 구멍(0.2 아래)은 그대로
+// 돌려주는 것: 다듬은 마스크 + 물체 상자(0~1 비율, 없으면 null)
+export type Refined = { a: Uint8Array; rel: [x0: number, y0: number, x1: number, y1: number] | null };
+export function refineMask(mask: Uint8Array, fill: boolean): Refined {
+  // 0) 아주 옅은 곳(약 10% 아래)은 0으로 — 흰 바탕 위에서 물체 둘레에 뿌옇게 남던 것
+  const n = M * M, a = Uint8Array.from(mask, v => (v < 24 ? 0 : v)), bin = new Uint8Array(n);
+  for (let i = 0; i < n; i++) bin[i] = a[i] >= 51 ? 1 : 0;
+  const { lab, area } = components(bin, M, M);
+  if (area.length) {
+    const big = Math.max(...area), small = area.map(s => s < big * 0.02);
+    if (small.some(Boolean)) {
+      const keep = distance2(i => lab[i] >= 0 && !small[lab[i]], M, M), drop = distance2(i => lab[i] >= 0 && small[lab[i]], M, M);
+      for (let i = 0; i < n; i++) if (drop[i] < keep[i] && drop[i] <= 36) { a[i] = 0; bin[i] = 0; }
+    }
+    if (fill) {
+      // 채우는 정도는 깊이(윤곽에서 3~8칸) × 진하기(0.2 → 0, 0.6 → 1)로 이어지게 — 문턱을 넘은 곳만 갑자기 채우면 얼룩덜룩해짐
+      const din = distance2(i => !bin[i], M, M);   // 안에서 윤곽까지
+      for (let i = 0; i < n; i++) {
+        if (!bin[i]) continue;
+        const d = Math.sqrt(din[i]), depth = d >= 8 ? 1 : d <= 3 ? 0 : (d - 3) / 5;
+        const s = depth * Math.min(1, (a[i] - 51) / 102) * 255;
+        if (s > a[i]) a[i] = s;
+      }
+    }
+  }
+  let x0 = M, y0 = M, x1 = -1, y1 = -1;
+  for (let i = 0; i < n; i++) {
+    if (a[i] <= 10) continue;
+    const x = i % M, y = (i - x) / M;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { a, rel: x1 < 0 ? null : [x0 / M, y0 / M, (x1 + 1) / M, (y1 + 1) / M] };
+}
+
+// 물체만 잘라 S×S 캔버스에 놓음(긴 쪽이 fit, 가로 가운데 · 세로는 가운데 또는 아래 끝): 원본 화소 × 다듬은 마스크
+// 자르기·줄이기는 풀 때 한 번에(큰 사진도 원본 크기 캔버스를 안 만듦). 물체가 사진 아래 끝에서 잘려 있으면(사람 상반신 등) bottom이면 아래에 붙임
+async function layer(src: Src, r: Refined, S: number, fit: number, bottom: boolean): Promise<Canvas> {
+  const [W, H] = src.size, [x0, y0, x1, y1] = r.rel ?? [0, 0, 1, 1];
+  const sx = Math.floor(x0 * W), sy = Math.floor(y0 * H), sw = Math.max(1, Math.ceil(x1 * W) - sx), sh = Math.max(1, Math.ceil(y1 * H) - sy);
+  const k = fit / Math.max(sw, sh), w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
+  const ox = Math.round((S - w) / 2), oy = bottom && y1 >= 1 - 2 / M ? S - h : Math.round((S - h) / 2);
+  const bmp = await createImageBitmap(src.file, sx, sy, sw, sh, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
+  const mc = canvas(M, M), md = new ImageData(M, M), p = md.data;
+  for (let i = 0; i < M * M; i++) p[4 * i + 3] = r.a[i];
+  ctx2d(mc).putImageData(md, 0, 0);
+  const c = canvas(S, S), x = ctx2d(c, { willReadFrequently: true });
+  x.drawImage(bmp, ox, oy, w, h);   // 크기를 적어 둠: 줄이기 옵션을 무시하는 브라우저도 맞게
+  bmp.close();
+  x.globalCompositeOperation = 'destination-in';
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(mc, x0 * M, y0 * M, (x1 - x0) * M, (y1 - y0) * M, ox, oy, w, h);
+  x.globalCompositeOperation = 'source-over';
+  free(mc);
+  return c;
+}
+
+// 상품 사진: 한 변 size, 여백 pad(한 변의 비율) 안에 물체의 긴 쪽을 꽉 차게. 바탕이 있으니 JPEG
+async function product(src: Src, r: Refined, o: ProductOpts): Promise<Blob> {
+  const S = o.size, inner = Math.max(1, S - 2 * Math.round(S * o.pad));
+  const c = await layer(src, r, S, inner, true), x = ctx2d(c);
+  x.globalCompositeOperation = 'destination-over';
+  x.fillStyle = o.bg;
+  x.fillRect(0, 0, S, S);
+  try {
+    return await encode(c, 'image/jpeg', 0.92);
+  } finally {
+    free(c);
+  }
+}
+
 // 스티커: 투명 바탕, 물체 둘레에 흰 테두리(거리 변환으로 둥글고 고르게, 가장자리는 부드럽게).
 // 작은 규격(360 등)은 두 배로 그려 줄여서 테두리 가장자리를 매끄럽게. 용량 상한을 넘으면 256색 PNG로
-async function sticker(cutout: Blob, box: Box | null, o: StickerOpts): Promise<Blob> {
+async function sticker(src: Src, r: Refined, o: StickerOpts): Promise<Blob> {
   const S = o.size, W = S < 720 ? S * 2 : S;
   const ow = Math.round(W * o.outline), gap = Math.round(W * 0.03);
-  const { bmp, w, h } = await subject(cutout, box, Math.max(1, W - 2 * (ow + gap)));
-  let c: Canvas = canvas(W, W);
+  let c: Canvas = await layer(src, r, W, Math.max(1, W - 2 * (ow + gap)), false);
   const x = ctx2d(c, { willReadFrequently: true });
-  const ox = Math.round((W - w) / 2), oy = Math.round((W - h) / 2);
   if (ow > 0) {
-    // 물체(알파 100 이상 — 옅은 머리카락 끝도 감싸게)에서 ow 안쪽을 흰색으로, 바깥 한 화소는 거리만큼 옅게
-    x.drawImage(bmp, ox, oy, w, h);
-    const img = x.getImageData(0, 0, W, W), p = img.data;
+    // 물체(알파 100 이상 — 옅은 머리카락 끝도 감싸게)에서 ow 안쪽을 흰색으로, 바깥 한 화소는 거리만큼 옅게 → 물체 밑에 깖
+    const p = x.getImageData(0, 0, W, W).data;
     const d2 = distance2(i => p[4 * i + 3] >= 100, W, W);
+    const ring = new ImageData(W, W), q = ring.data;
     for (let i = 0; i < W * W; i++) {
-      const a = Math.min(1, Math.max(0, ow + 0.5 - Math.sqrt(d2[i])));
-      p[4 * i] = p[4 * i + 1] = p[4 * i + 2] = 255;
-      p[4 * i + 3] = a * 255;
+      q[4 * i] = q[4 * i + 1] = q[4 * i + 2] = 255;
+      q[4 * i + 3] = Math.min(1, Math.max(0, ow + 0.5 - Math.sqrt(d2[i]))) * 255;
     }
-    x.putImageData(img, 0, 0);
+    const rc = canvas(W, W);
+    ctx2d(rc).putImageData(ring, 0, 0);
+    x.globalCompositeOperation = 'destination-over';
+    x.drawImage(rc, 0, 0);
+    x.globalCompositeOperation = 'source-over';
+    free(rc);
   }
-  x.drawImage(bmp, ox, oy, w, h);
-  bmp.close();
   if (W !== S) {
     const s = canvas(S, S), sx = ctx2d(s, { willReadFrequently: true });
     sx.imageSmoothingQuality = 'high';
@@ -130,8 +200,19 @@ async function sticker(cutout: Blob, box: Box | null, o: StickerOpts): Promise<B
   }
 }
 
-export async function render(cutout: Blob, box: Box | null, spec: Spec): Promise<Blob> {
-  return spec.mode === 'product' ? product(cutout, box, spec.opts) : sticker(cutout, box, spec.opts);
+// 다듬은 마스크는 사진·속 채우기마다 한 번만(설정을 바꿔 가며 다시 그릴 때 거리 변환을 또 안 하게) — 최근 12개
+const refinedCache = new Map<string, Refined>();
+export async function render(src: Src, spec: Spec, key = ''): Promise<Blob> {
+  const ck = `${key}|${spec.opts.fill}`;
+  let r = key ? refinedCache.get(ck) : undefined;
+  if (!r) {
+    r = refineMask(src.mask, spec.opts.fill);
+    if (key) {
+      refinedCache.set(ck, r);
+      if (refinedCache.size > 12) refinedCache.delete(refinedCache.keys().next().value!);
+    }
+  }
+  return spec.mode === 'product' ? product(src, r, spec.opts) : sticker(src, r, spec.opts);
 }
 
 // ── 256색 PNG(팔레트 + 투명도): 카톡 규격 용량(360px 150KB 등)을 넘을 때만 ──

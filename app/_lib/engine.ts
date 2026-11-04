@@ -3,9 +3,8 @@
 // GPU/CPU는 model.ts가 고름 — 주소에 ?gpu=1 / ?gpu=0을 붙이면 시험 삼아 강제로
 import type { Prefer, Progress } from './model';
 import type { Cutout, Step } from './pipeline';
-import type { Box } from './post';
 
-type Reply = { blob?: Blob; box?: Box | null; device?: string };
+type Reply = { blob?: Blob; mask?: Uint8Array; size?: [number, number]; device?: string };
 type Pending = { resolve: (m: Reply) => void; reject: (e: Error) => void };
 
 const canUseWorker = () =>
@@ -82,15 +81,15 @@ export function createEngine(onProgress: Progress, onStep: Step) {
 
   return {
     preload,
-    // 투명 PNG와 물체 상자(상품 사진·스티커로 다시 그릴 때 씀)
+    // 투명 PNG와 마스크·원본 크기(상품 사진·스티커로 다시 그릴 때 씀)
     async run(file: Blob): Promise<Cutout> {
       if (mode === 'main') {
         const { model, pipeline } = await openMain();
         return pipeline.removeBackground(file, input => model.segment(input), onStep);
       }
-      const { blob, box } = await call({ op: 'run', blob: file });
-      if (!blob) throw new Error('worker: no result');
-      return { blob, box: box ?? null };
+      const { blob, mask, size } = await call({ op: 'run', blob: file });
+      if (!blob || !mask || !size) throw new Error('worker: no result');
+      return { blob, mask, size };
     },
     get mode() { return mode; },
     get device() { return device; },

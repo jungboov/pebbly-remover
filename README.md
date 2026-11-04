@@ -10,7 +10,9 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
   - 상품 사진: 고른 색 바탕(흰색·연회색·검정·직접) · 정사각형 1000/1500/2000 · 모든 사진 같은 여백(0~30%) → JPEG. 사진 아래 끝에서 잘린 물체는 아래에 붙임
   - 스티커: 흰 테두리(없음·얇게·보통·두껍게) · 투명 PNG · 카톡 규격 크기(이모티콘 360, 큰 이모티콘 540, 미니 180, 아이콘 78) + 크게 1000. 규격 용량을 넘으면 256색 PNG로
     (규격 출처: 카카오 이모티콘 스튜디오 [이모티콘 유형별 이미지 가이드](https://kakaoemoticonstudio.notion.site/image-guide), 2026-11-04 확인 — 360 PNG 150KB · 540 1MB · 180 100KB · 78 16KB, 72dpi RGB, 투명 배경)
+  - 상품 사진·스티커는 원본 + 모델 마스크(1024²)에서 다시 그림: 아주 옅은 곳(10% 아래) 지우기 · 가장 큰 덩어리의 2%보다 작은 조각(워터마크·티끌) 지우기 · 속 채우기(윤곽 안 반투명을 불투명으로, 켜고 끔 — 유리처럼 비쳐야 하면 끔)
   - 모드·설정을 바꾸면 다 지운 사진을 바로 다시 그림(모델은 다시 안 돌림, 캔버스 워커에서 — 화면 안 멈춤)
+  - 시험해 보고 안 넣은 것(2026-11-04): BiRefNet_lite(MIT, 114MB) — 물건은 더 꽉 차게 잡지만 브라우저 onnxruntime(1.21·1.31)에서 GPU는 셰이더 버퍼 한도(16)·CPU는 메모리(4GB) 때문에 1024로 못 돌림. 주인공 하나만 남기기·확대해 한 번 더 지우기는 사진마다 들쭉날쭉해서 뺌
 - 지우기: ISNet fp16 모델(88MB — IMG.LY가 공개한 [@imgly/background-removal-data](https://github.com/imgly/background-removal-js) 1.7.0, 그쪽 CDN) + onnxruntime-web 1.21.0 wasm(이 사이트에서, Cloudflare brotli로 CPU 2.3MB · GPU 5.0MB)
   - 모델: fp32 176MB와 결과 같음. quint8 44MB는 배경과 색이 비슷한 사진에서 깨져서 안 씀
   - 라이브러리(@imgly/background-removal) 없이 직접 부름(`app/_lib/model.ts`): 받은 파일을 Cache Storage에 남겨 다음 방문부턴 망 없이, 설명 파일 한 번만. wasm은 빌드가 `_next/static/media`에 넣음(imgly CDN은 안 줄여서 12·23MB)
