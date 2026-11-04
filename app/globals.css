@@ -206,6 +206,38 @@ html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var
 .switch[data-on=true] i{transform:translateX(18px);background:var(--on-accent)}
 
 
+/* ── 바탕색 고르기(ColorSheet.tsx): 폰은 아래에서 올라오는 시트, PC는 가운데 창 — 검은 바탕 · 흰 선 ── */
+/* 뒤는 흐리지 않고 살짝만 어둡게 — 고르는 동안 위 보기 창이 바뀌는 게 보이게 */
+.cs-back{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.3);animation:cs-fade .18s ease-out}
+.cs{width:100%;max-width:440px;display:flex;flex-direction:column;gap:16px;padding:18px 18px calc(18px + env(safe-area-inset-bottom));background:var(--panel);border:1px solid var(--bd);border-bottom:0;border-radius:22px 22px 0 0;outline:none;animation:cs-up .22s cubic-bezier(.2,.8,.2,1)}
+.cs-head{display:flex;align-items:center;gap:10px}
+.cs-head strong{flex:1;font-size:15px;font-weight:600}
+.cs-now{width:22px;height:22px;border-radius:7px;border:1px solid rgba(255,255,255,.25)}
+.cs-x{display:grid;place-items:center;width:34px;height:34px;margin-right:-6px;border-radius:50%;color:var(--muted);transition:color .2s,background .2s}
+.cs-x:hover{color:var(--text);background:#1a1a1a}
+.cs-presets{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.cs-presets button{aspect-ratio:1;border-radius:10px;border:1px solid rgba(255,255,255,.14);transition:transform .15s}
+.cs-presets button:hover{transform:scale(1.06)}
+.cs-presets button[data-on=true]{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px var(--accent)}
+.cs-sv{position:relative;height:168px;border-radius:14px;border:1px solid rgba(255,255,255,.12);touch-action:none;cursor:crosshair}
+.cs-hue{position:relative;height:14px;border-radius:999px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);touch-action:none;cursor:ew-resize}
+.cs-sv i,.cs-hue i{position:absolute;width:22px;height:22px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35),0 2px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%);pointer-events:none}
+.cs-hue i{top:50%}
+.cs-foot{display:flex;align-items:center;gap:10px}
+.cs-hex{flex:1;min-width:0;display:flex;align-items:center;gap:4px;height:44px;padding:0 14px;border:1px solid var(--bd);border-radius:14px;font-family:var(--logo);font-weight:500;color:var(--muted)}
+.cs-hex input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--text);font:inherit;font-size:15px;letter-spacing:.06em;text-transform:uppercase}
+.cs-hex:focus-within{border-color:var(--accent)}
+.cs-done{flex:none;height:44px;padding:0 26px}
+@keyframes cs-fade{from{opacity:0}}
+@keyframes cs-up{from{transform:translateY(24px);opacity:0}}
+/* PC: 옆 칸 위에 띄움(보기 창은 그대로 보이게) */
+@media (min-width:900px){
+  .cs-back{align-items:center;justify-content:flex-end;padding-right:max(40px, calc((100vw - 1240px) / 2 + 40px))}
+  .cs{width:380px;border-bottom:1px solid var(--bd);border-radius:22px;padding-bottom:18px}
+}
+@media (prefers-reduced-motion:reduce){.cs-back,.cs{animation:none}}
+
+
 /* ── 받기 버튼 ── */
 .actions{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;border-radius:14px;border:1px solid rgba(255,255,255,.5);font-size:14px;font-weight:600;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,opacity .2s}

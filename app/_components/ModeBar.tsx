@@ -1,9 +1,10 @@
 "use client";
 
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { Mode, ProductOpts, StickerOpts } from '../_lib/post';
 import { OUTLINES, PRODUCT_SIZES, STICKER_SIZES } from '../_lib/post';
 import { useLang } from '../_lib/lang';
+import { ColorSheet } from './ColorSheet';
 import { IconPlus } from './Icons';
 import { T } from './T';
 
@@ -50,6 +51,7 @@ export function ModeBar({ mode, onMode, product, onProduct, sticker, onSticker }
   const lang = useLang();
   const ko = lang === 'ko';
   const custom = !BGS.some(b => b.c === product.bg);
+  const [picking, setPicking] = useState(false);   // 바탕색 고르기 창
   const pad = Math.round(product.pad * 100);
   const fillRow = (on: boolean, set: (v: boolean) => void) => (
     <div className="opt">
@@ -81,14 +83,13 @@ export function ModeBar({ mode, onMode, product, onProduct, sticker, onSticker }
                   <span>{ko ? b.ko : b.en}</span>
                 </button>
               ))}
-              <label className="bg-tile" data-on={custom} title={ko ? '색 고르기' : 'Pick a color'}>
+              <button type="button" role="radio" aria-checked={custom} className="bg-tile" data-on={custom}
+                onClick={() => { if (!custom) onProduct({ ...product, bg: '#f6f1e7' }); setPicking(true); }}>
                 <i className="bg-pick" style={custom ? { background: product.bg, borderStyle: 'solid' } : undefined}>
                   {!custom && <IconPlus size={14} />}
                 </i>
                 <span className={custom ? 'num' : undefined}>{custom ? product.bg.toUpperCase() : ko ? '직접' : 'Custom'}</span>
-                <input type="color" value={custom ? product.bg : '#d9d4cc'} onChange={(e) => onProduct({ ...product, bg: e.target.value })}
-                  aria-label={ko ? '바탕색 직접 고르기' : 'Pick background color'} />
-              </label>
+              </button>
             </div>
           </div>
           <div className="opt">
@@ -103,6 +104,7 @@ export function ModeBar({ mode, onMode, product, onProduct, sticker, onSticker }
               items={PRODUCT_SIZES.map(z => ({ v: z, node: <span className="num">{z}</span> }))} />
           </div>
           {fillRow(product.fill, (v) => onProduct({ ...product, fill: v }))}
+          {picking && <ColorSheet value={product.bg} onChange={(c) => onProduct({ ...product, bg: c })} onClose={() => setPicking(false)} />}
         </div>
       )}
 
