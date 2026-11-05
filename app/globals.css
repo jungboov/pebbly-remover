@@ -40,9 +40,11 @@ html[lang=ko] .t-en, html:not([lang=ko]) .t-ko{display:none}
 
 
 /* ── 화면 틀: 폰은 위에서 아래로, PC는 보기 창 옆에 340px 칸 ──
-   높이는 100%(= 창): 100dvh는 기기에 따라 창보다 크게 잡혀(폴드 펼친 화면 등) 스크롤이 생겼음. 560px보다 낮은 창만 스크롤 */
+   높이는 100%(= 창): 100dvh는 기기에 따라 창보다 크게 잡혀(폴드 펼친 화면 등) 스크롤이 생겼음.
+   폰은 '적어도' 창 높이(min-height) — 다 들어가면 보기 창이 남는 자리를 채우고, 설정이 길어 안 들어가면(상품 사진 등)
+   보기 창은 200px로 줄고 쪽이 스크롤돼 바닥글이 맨 아래로 감(예전엔 height:100%라 넘친 옆 칸이 바닥글을 덮었음). PC는 창에 딱 맞춤(560px보다 낮으면 스크롤) */
 .app{
-  height:100%;min-height:560px;max-width:1240px;margin:0 auto;
+  min-height:max(560px, 100%);max-width:1240px;margin:0 auto;
   display:flex;flex-direction:column;
   padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
@@ -376,7 +378,7 @@ html[data-intro=off] .pi{display:none}
 
 /* ── PC: 보기 창 | 옆 칸(상태 · 썸네일 · 받기) ── */
 @media (min-width:900px){
-  .app{padding:calc(28px + env(safe-area-inset-top)) calc(40px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(40px + env(safe-area-inset-left))}
+  .app{height:100%;min-height:560px;padding:calc(28px + env(safe-area-inset-top)) calc(40px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(40px + env(safe-area-inset-left))}
   .head{padding-bottom:20px}
   .brand{font-size:30px}
   .work{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr);gap:24px;padding-top:24px}
