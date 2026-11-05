@@ -7,7 +7,7 @@ import type { Paper } from '../_lib/sheet';
 import { useLang } from '../_lib/lang';
 import { Seg, Switch } from './Controls';
 import { IconPlus } from './Icons';
-import { MmRuler } from './MmRuler';
+import { Ruler } from './Ruler';
 import { StickerPreview } from './CutView';
 import { T } from './T';
 
@@ -69,7 +69,7 @@ export function CutSide({ cut, onPick, onAdd, onPrint }: { cut: CutSheet; onPick
         <div className="opt">
           <span className="opt-k"><T ko="칼선 간격" en="Offset" /></span>
           {/* 줄자: 밀면 가운데 숫자가, 숫자를 치면 눈금이 따라옴(값은 s.gap 하나) */}
-          <MmRuler value={s.gap} min={GAP_MIN} max={GAP_MAX} onChange={(v) => cut.set({ gap: v })} label={ko ? '칼선 간격(그림에서 칼선까지)' : 'Offset from the art to the cut line'} />
+          <Ruler value={s.gap} min={GAP_MIN} max={GAP_MAX} step={0.1} unit="mm" onChange={(v) => cut.set({ gap: v })} label={ko ? '칼선 간격(그림에서 칼선까지)' : 'Offset from the art to the cut line'} />
           <span className="opt-u">mm</span>
         </div>
         <div className="opt">

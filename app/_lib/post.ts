@@ -14,9 +14,9 @@ export type Src = { file: Blob; mask: Uint8Array; size: [w: number, h: number] }
 
 export const PRODUCT_DEFAULT: ProductOpts = { bg: '#ffffff', size: 1000, pad: 0.08, fill: true };
 export const PRODUCT_SIZES = [1000, 1500, 2000];
-// 테두리: 없음 · 얇게 · 보통 · 두껍게(한 변의 비율 — 360px에서 0 · 5 · 9 · 14px)
+// 테두리: 한 변의 비율, 줄자로 0~10%를 0.1%씩(0이면 없음 · 예전 얇게 1.5 · 보통 2.5 · 두껍게 4 — 360px에서 5 · 9 · 14px)
 export const STICKER_DEFAULT: StickerOpts = { outline: 0.025, size: 360, fill: true };
-export const OUTLINES = [0, 0.015, 0.025, 0.04];
+export const OUTLINE_MAX = 10;
 
 // 카카오톡 이모티콘 규격 — 카카오 이모티콘 스튜디오 '이모티콘 유형별 이미지 가이드'(https://kakaoemoticonstudio.notion.site/image-guide, 2026-11-04 확인)
 // 멈춰있는 이모티콘 360×360 PNG 150KB 이하 · 큰 이모티콘 540×540(제안 때 움직이지 않는 것은 PNG) 1MB 이하 · 멈춰있는 미니 180×180 PNG 100KB 이하

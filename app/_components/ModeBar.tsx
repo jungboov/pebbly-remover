@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import type { Mode, ProductOpts, StickerOpts } from '../_lib/post';
-import { OUTLINES, PRODUCT_SIZES, STICKER_SIZES } from '../_lib/post';
+import { OUTLINE_MAX, PRODUCT_SIZES, STICKER_SIZES } from '../_lib/post';
 import { useLang } from '../_lib/lang';
 import { ColorSheet } from './ColorSheet';
 import { Seg, Switch } from './Controls';
 import { IconPlus } from './Icons';
+import { Ruler } from './Ruler';
 import { T } from './T';
 
 interface ModeBarProps {
@@ -73,9 +74,8 @@ export function ModeBar({ mode, onMode, product, onProduct, sticker, onSticker }
           </div>
           <div className="opt">
             <span className="opt-k"><T ko="여백" en="Padding" /></span>
-            <input className="rng" type="range" min="0" max="30" step="1" value={pad} style={{ '--p': `${(pad / 30) * 100}%` } as CSSProperties}
-              onChange={(e) => onProduct({ ...product, pad: Number(e.target.value) / 100 })} aria-label={ko ? '여백' : 'Padding'} />
-            <span className="opt-v num">{pad}%</span>
+            <Ruler value={pad} min={0} max={30} step={1} unit="%" onChange={(v) => onProduct({ ...product, pad: v / 100 })} label={ko ? '여백(한 변의 %)' : 'Padding (% of the side)'} />
+            <span className="opt-u">%</span>
           </div>
           <div className="opt">
             <span className="opt-k"><T ko="크기" en="Size" /></span>
@@ -91,8 +91,9 @@ export function ModeBar({ mode, onMode, product, onProduct, sticker, onSticker }
         <div className="opts">
           <div className="opt">
             <span className="opt-k"><T ko="테두리" en="Outline" /></span>
-            <Seg label={ko ? '테두리' : 'Outline'} value={sticker.outline} onPick={(v) => onSticker({ ...sticker, outline: v })}
-              items={OUTLINES.map((o, i) => ({ v: o, node: [<T key="0" ko="없음" en="None" />, <T key="1" ko="얇게" en="Thin" />, <T key="2" ko="보통" en="Mid" />, <T key="3" ko="두껍게" en="Thick" />][i] }))} />
+            <Ruler value={Math.round(sticker.outline * 1000) / 10} min={0} max={OUTLINE_MAX} step={0.1} unit="%" onChange={(v) => onSticker({ ...sticker, outline: Math.round(v * 10) / 1000 })}
+              label={ko ? '흰 테두리(한 변의 %, 0이면 없음)' : 'White outline (% of the side, 0 = none)'} />
+            <span className="opt-u">%</span>
           </div>
           <div className="opt">
             <span className="opt-k"><T ko="크기" en="Size" /></span>
