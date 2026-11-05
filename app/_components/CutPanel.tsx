@@ -7,11 +7,12 @@ import type { Paper } from '../_lib/sheet';
 import { useLang } from '../_lib/lang';
 import { Seg, Switch } from './Controls';
 import { IconPlus } from './Icons';
+import { MmRuler } from './MmRuler';
 import { StickerPreview } from './CutView';
 import { T } from './T';
 
-const GAPS = [1.5, 2.5, 4];
-const m = (mm: number) => `${(mm / 1000).toFixed(2)} m`;
+const GAP_MIN = 0.5, GAP_MAX = 10;   // 칼선 간격 mm(그림에서 칼선까지)
+const m =(mm: number) => `${(mm / 1000).toFixed(2)} m`;
 
 // 그림 하나(썸네일): 개수 · 준비 중 · 배경 지우는 중 · 오류
 function Badge({ it, full }: { it: CutItem; full: boolean }) {
@@ -47,7 +48,6 @@ export function CutList({ cut, onPick, onAdd }: { cut: CutSheet; onPick: (id: st
 export function CutSide({ cut, onPick, onAdd, onPrint }: { cut: CutSheet; onPick: (id: string) => void; onAdd: () => void; onPrint: () => void }) {
   const ko = useLang() === 'ko';
   const s = cut.settings;
-  const customGap = !GAPS.includes(s.gap);
   return (
     <div className="side cut-side">
       <div className="thumbs cut-strip">
@@ -68,17 +68,10 @@ export function CutSide({ cut, onPick, onAdd, onPrint }: { cut: CutSheet; onPick
       <div className="opts">
         <div className="opt">
           <span className="opt-k"><T ko="칼선 간격" en="Offset" /></span>
-          <Seg label={ko ? '칼선 간격' : 'Cut line offset'} value={customGap ? -1 : s.gap} onPick={(v) => cut.set({ gap: v === -1 ? (customGap ? s.gap : 3) : v })}
-            items={[...GAPS.map(g => ({ v: g, node: <span className="num">{g}</span> })), { v: -1, node: <T ko="직접" en="Custom" /> }]} />
+          {/* 줄자: 밀면 가운데 숫자가, 숫자를 치면 눈금이 따라옴(값은 s.gap 하나) */}
+          <MmRuler value={s.gap} min={GAP_MIN} max={GAP_MAX} onChange={(v) => cut.set({ gap: v })} label={ko ? '칼선 간격(그림에서 칼선까지)' : 'Offset from the art to the cut line'} />
           <span className="opt-u">mm</span>
         </div>
-        {customGap && (
-          <div className="opt">
-            <span className="opt-k" />
-            <MmInput value={s.gap} min={0.5} max={10} step={0.5} onChange={(v) => cut.set({ gap: v })} label={ko ? '칼선 간격 mm' : 'Offset in mm'} />
-            <span className="opt-hint"><T ko="그림에서 칼선까지" en="From the art to the cut line" /></span>
-          </div>
-        )}
         <div className="opt">
           <span className="opt-k"><T ko="종이" en="Paper" /></span>
           <Seg<Paper> label={ko ? '종이' : 'Paper'} value={s.paper} onPick={(v) => cut.set({ paper: v })}
@@ -115,12 +108,15 @@ export function CutSide({ cut, onPick, onAdd, onPrint }: { cut: CutSheet; onPick
   );
 }
 
+// mm 숫자 칸: 치는 동안은 글자 그대로 두고 범위 안의 값이면 바로 반영, 다 치면(칸을 떠나거나 엔터) 범위 밖 값은 끝값으로
 function MmInput({ value, min, max, step, onChange, label }: { value: number; min: number; max: number; step: number; onChange: (v: number) => void; label: string }) {
-  const [txt, setTxt] = useState<string | null>(null);   // 치는 동안만 글자 그대로(다 치면 값)
+  const [txt, setTxt] = useState<string | null>(null);
+  const r = (v: number) => Math.round(v * 10) / 10;
   return (
     <label className="dl-num"><input type="number" inputMode="decimal" min={min} max={max} step={step} value={txt ?? String(value)} aria-label={label}
-      onChange={(e) => { setTxt(e.target.value); const v = Number(e.target.value); if (v >= min && v <= max) onChange(Math.round(v * 10) / 10); }}
-      onBlur={() => setTxt(null)} /><span>mm</span></label>
+      onChange={(e) => { const t = e.target.value, v = Number(t); setTxt(t); if (t.trim() && v >= min && v <= max) onChange(r(v)); }}
+      onBlur={() => { const v = Number(txt); if (txt?.trim() && Number.isFinite(v)) onChange(r(Math.min(max, Math.max(min, v)))); setTxt(null); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /><span>mm</span></label>
   );
 }
 
@@ -250,8 +246,8 @@ export function PrintSheet({ cut, onClose }: { cut: CutSheet; onClose: () => voi
             : <span>{s.paper === 'letter' ? 'Letter' : s.paper.toUpperCase()} <b className="num">{cut.sheet.pages.length}</b><T ko="장" en=" sheets" /> · <T ko="스티커" en="stickers" /> <b className="num">{cut.placed}</b> · <T ko="반칼" en="kiss" /> <span className="num">{m(cut.kissMm)}</span></span>}
         </div>
         <div className="cs-foot">
-          <button type="button" className="btn btn-main dl-zip" onClick={cut.download} disabled={cut.busy || (f === 'png' ? cut.ready.length === 0 : cut.placed === 0)}>
-            {cut.busy ? <T ko="만드는 중…" en="Building…" /> : <T ko={`${label} 받기`} en={`Download ${label}`} />}
+          <button type="button" className="btn btn-main dl-zip" onClick={cut.download} disabled={cut.busy || cut.waiting > 0 || (f === 'png' ? cut.ready.length === 0 : cut.placed === 0)}>
+            {cut.busy ? <T ko="만드는 중…" en="Building…" /> : cut.waiting > 0 ? <T ko="칼선 계산 중…" en="Tracing…" /> : <T ko={`${label} 받기`} en={`Download ${label}`} />}
           </button>
         </div>
       </div>

@@ -44,11 +44,13 @@ export function useCutSheet(remover: Remover, batchItems: BatchItem[]) {
   const [raw, setItems] = useState<CutItem[]>([]);
   // 배경 지우는 중인 사진의 진행은 지우기 탭 줄에서 바로 읽음
   const items = raw.map(i => (i.status === 'removing' && i.from ? { ...i, progress: remover.progressOf(i.from) ?? 0 } : i));
-  const [geos, setGeos] = useState<Record<string, { key: string; geo: Geo }>>({});
+  // 그림마다 마지막으로 계산한 칼선(geo null = 그 설정으로는 계산 실패). 열쇠가 지금 설정과 다르면 새로 계산하는 동안 앞 칼선을 보여 줌
+  const [geos, setGeos] = useState<Record<string, { key: string; geo: Geo | null }>>({});
   const [busy, setBusy] = useState(false);
+  const [geoTick, setGeoTick] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const liveRef = useRef(new Set<string>());   // 비우면 하던 일의 결과를 버림
-  const geoJobs = useRef(new Map<string, string>());   // 계산 중인 열쇠
+  const geoRun = useRef(false);   // 칼선 계산은 한 번에 하나(게이지를 끄는 동안 지난 값의 일이 쌓이지 않게)
 
   const patch = (id: string, p: Partial<CutItem>) => setItems(prev => prev.map(i => i.id === id ? { ...i, ...p } : i));
 
@@ -117,52 +119,52 @@ export function useCutSheet(remover: Remover, batchItems: BatchItem[]) {
   const clear = () => {
     for (const it of items) if (it.preview) URL.revokeObjectURL(it.preview);
     liveRef.current.clear();
-    geoJobs.current.clear();
     setItems([]);
     setGeos({});
   };
 
-  // 칼선 계산: 크기·간격·구멍 메우기가 바뀐 그림만(캔버스 워커에서 한 장씩)
+  // 칼선 계산: 크기·간격·구멍 메우기가 바뀐 그림만, 캔버스 워커에서 한 장씩 차례로.
+  // 하나 끝나면 그때의 설정으로 다음 것을 고름 → 게이지를 끄는 동안에도 일은 늘 하나뿐이고 손을 떼면 곧 맞춰짐
   useEffect(() => {
-    for (const it of items) {
-      if (it.status !== 'ready' && it.status !== 'removing') continue;
-      if (!it.art) continue;
-      const key = geoKey(it, s.gap);
-      if (geos[it.id]?.key === key || geoJobs.current.get(it.id) === key) continue;
-      geoJobs.current.set(it.id, key);
-      cutGeo(it.art, it.aw, it.ah, { size: it.size, gap: s.gap, holes: it.holes }).then(geo => {
-        if (geoJobs.current.get(it.id) !== key || !liveRef.current.has(it.id)) return;
-        geoJobs.current.delete(it.id);
-        setGeos(prev => ({ ...prev, [it.id]: { key, geo } }));
-      }, e => {
-        console.error('칼선 계산 오류:', e);
-        if (geoJobs.current.get(it.id) === key) geoJobs.current.delete(it.id);
+    if (geoRun.current) return;
+    const need = items.filter(it => (it.status === 'ready' || it.status === 'removing') && it.art && geos[it.id]?.key !== geoKey(it, s.gap));
+    const it = need.find(i => !geos[i.id]) ?? need[0];   // 칼선이 아직 없는 그림 먼저
+    if (!it?.art) return;
+    const id = it.id, key = geoKey(it, s.gap);
+    geoRun.current = true;
+    cutGeo(it.art, it.aw, it.ah, { size: it.size, gap: s.gap, holes: it.holes })
+      .then(geo => geo, e => { console.error('칼선 계산 오류:', e); return null; })
+      .then(geo => {
+        geoRun.current = false;
+        if (liveRef.current.has(id)) setGeos(prev => ({ ...prev, [id]: { key, geo } }));
+        setGeoTick(t => t + 1);
       });
-    }
-  }, [items, s.gap, geos]);
+  }, [items, s.gap, geos, geoTick]);
 
-  // 지금 설정과 맞는 칼선만 시트에
-  const ready = items.filter(it => it.art && geos[it.id]?.key === geoKey(it, s.gap));
-  const waiting = items.filter(it => it.status !== 'error' && !ready.includes(it)).length;
-  const packKey = ready.map(it => `${it.id}:${it.count}:${geos[it.id].key}`).join(',');
+  // 시트에는 칼선이 있는 그림(새로 계산 중이면 앞 칼선으로). 받기는 다 맞춰진 뒤에만(waiting 0)
+  const fresh = (it: CutItem) => geos[it.id]?.key === geoKey(it, s.gap);
+  const shown = items.filter(it => it.art && geos[it.id]?.geo);
+  const ready = shown.filter(fresh);
+  const waiting = items.filter(it => it.status !== 'error' && !fresh(it)).length;
+  const packKey = shown.map(it => `${it.id}:${it.count}:${geos[it.id].key}`).join(',');
   const sheet = useMemo(
-    () => pack(ready.map(it => ({ id: it.id, w: geos[it.id].geo.w, h: geos[it.id].geo.h, count: it.count })), s.paper, s.full),
+    () => pack(shown.map(it => ({ id: it.id, w: geos[it.id].geo!.w, h: geos[it.id].geo!.h, count: it.count })), s.paper, s.full),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [packKey, s.paper, s.full],
   );
-  const kissMm = sheet.pages.reduce((a, pg) => a + pg.reduce((b, p) => b + (geos[p.id]?.geo.len ?? 0), 0), 0);
+  const kissMm = sheet.pages.reduce((a, pg) => a + pg.reduce((b, p) => b + (geos[p.id]?.geo?.len ?? 0), 0), 0);
   const [PW, PH] = PAPERS[s.paper];
   const dieMm = s.die ? sheet.pages.length * (2 * (PW - 2 * DIE_IN + PH - 2 * DIE_IN) - (8 - 2 * Math.PI) * DIE_R) : 0;
   const placed = sheet.pages.reduce((a, pg) => a + pg.length, 0);
 
   const download = async () => {
-    if (busy) return;
+    if (busy || waiting) return;
     const list = ready.filter(it => s.format === 'png' || sheet.pages.some(pg => pg.some(p => p.id === it.id)));
     if (!list.length) return;
     setBusy(true);
     try {
       const files = await buildFiles({
-        items: list.map(it => ({ id: it.id, name: it.name, art: it.art!, geo: geos[it.id].geo, size: it.size })),
+        items: list.map(it => ({ id: it.id, name: it.name, art: it.art!, geo: geos[it.id].geo!, size: it.size })),
         pages: sheet.pages, paper: s.paper, die: s.die, preset: s.preset, split: s.split, format: s.format,
       });
       const { saveAs } = await (await import('file-saver')).default;

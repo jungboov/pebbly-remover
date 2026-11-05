@@ -303,6 +303,22 @@ html[lang=ko] .lang [data-l=ko], html:not([lang=ko]) .lang [data-l=en]{color:var
 .cut-th[data-state=prep] img,.cut-th[data-state=removing] img{opacity:.4}
 .th-count{position:absolute;right:4px;top:4px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:10px;display:grid;place-items:center}
 .opt-u{flex:none;width:22px;color:var(--dim);font-size:11px;font-family:var(--logo)}
+/* mm 줄자(MmRuler, 칼선 간격): 로고 스파인 00 [ 01 ] 02를 눕힌 꼴 — 가운데 [ 값 ]은 그대로, 눈금(0.1mm = 8px)이 움직임. 양 끝은 흐리게 */
+.rl{position:relative;flex:1;min-width:0;height:50px;overflow:hidden;cursor:grab;touch-action:pan-y;user-select:none;-webkit-user-select:none;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
+.rl:focus-visible{outline:none}
+.rl:focus-visible .rl-c{box-shadow:0 0 0 1px var(--dim)}
+.rl.drag{cursor:grabbing}
+.rl-s{position:absolute;top:0;bottom:0;left:50%;transition:transform .25s cubic-bezier(.2,.7,.2,1)}
+.rl.drag .rl-s,.rl.fling .rl-s{transition:none}
+.rl-t{position:absolute;left:0;bottom:0;height:7px;background:repeating-linear-gradient(90deg,#3a3a3a 0 1px,transparent 1px 8px)}
+.rl-T{position:absolute;left:0;bottom:0;height:13px;background:repeating-linear-gradient(90deg,var(--dim) 0 1px,transparent 1px 40px)}
+.rl-n{position:absolute;top:8px;width:40px;margin-left:-20px;text-align:center;font-family:var(--logo);font-weight:500;font-size:12px;opacity:.45}
+.rl-c{position:absolute;top:2px;left:50%;transform:translateX(-50%);display:flex;align-items:center;height:30px;padding:0 4px;background:var(--bg);border-radius:6px;font-family:var(--logo);font-weight:600;font-size:19px;line-height:1;white-space:pre;cursor:text}
+.rl-c input{width:2.5em;padding:0;background:none;border:0;border-bottom:1px dashed transparent;border-radius:0;outline:none;color:var(--text);font:600 17px var(--logo);text-align:center}
+.rl-c input:focus{border-bottom-color:var(--muted)}
+.rl-x{position:absolute;bottom:0;left:50%;width:2px;height:15px;margin-left:-1px;background:var(--text);border-radius:1px}
+@media (prefers-reduced-motion:reduce){.rl-s{transition:none}}
 .cut-info{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:0 4px;font-size:12px;color:var(--muted)}
 .cut-info b{color:var(--text);font-weight:500}
 .cut-acts{grid-template-columns:1fr auto}

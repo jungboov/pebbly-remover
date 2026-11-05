@@ -46,7 +46,7 @@ export function CutView({ cut, page, onPage, onPick, onAdd }: { cut: CutSheet; p
       <div className="cv-frame">
         <svg className="cv-page" viewBox={`0 0 ${W} ${H}`} style={{ aspectRatio: `${W} / ${H}` }} role="img" aria-label={ko ? '스티커 시트 미리보기' : 'Sticker sheet preview'}>
           <defs>
-            {ids.map((id, i) => <clipPath key={id} id={`${uid}c${i}`}><path clipRule="evenodd" d={svgPath(geos[id].geo.loops)} /></clipPath>)}
+            {ids.map((id, i) => <clipPath key={id} id={`${uid}c${i}`}><path clipRule="evenodd" d={svgPath(geos[id].geo!.loops)} /></clipPath>)}
           </defs>
           <rect width={W} height={H} fill="#fff" />
           {pg.map((p, k) => {
