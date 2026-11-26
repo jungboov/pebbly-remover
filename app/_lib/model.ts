@@ -19,10 +19,12 @@ const FILES = { model: '/models/isnet_fp16' } as const;
 // GPU는 1024 한 장 0.1초(이 PC RTX 4060, CPU 16스레드는 2.3초)라 되면 GPU로, 안 되면 CPU. wasm은 그쪽에 맞는 것 하나만.
 // wasm은 이 사이트에서(빌드가 _next/static/media에 넣음, 1년 보관): Cloudflare가 brotli로 줄여 보내서 CPU 12.7 → 2.3MB, GPU 23.9 → 5.0MB
 // (imgly CDN은 안 줄임). onnxruntime JS와 판도 꼭 맞음
-// GPU 파일: 1.21까지는 JSEP(.jsep.wasm), 1.31부터 'onnxruntime-web/webgpu'가 새 WebGPU 엔진(.asyncify.wasm)을 씀 — 판을 올리면 이 이름부터 확인
+// GPU 파일: 1.21까지는 JSEP(.jsep.wasm). 1.31은 새 WebGPU 엔진인데 'onnxruntime-web/webgpu'(.asyncify.wasm 27.4MiB)는
+// Cloudflare 정적 파일 한도(한 파일 25MiB)를 넘어서 같은 엔진의 JSPI 판('onnxruntime-web/jspi', .jspi.wasm 17.1MiB)을 씀 —
+// 크롬 137+의 WebAssembly JSPI가 있어야 함(gpuUsable에서 확인). 판을 올리면 이 이름과 크기부터 확인(scripts/check-asset-size.mjs)
 const WASM_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', import.meta.url);
 const GLUE_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs', import.meta.url);
-const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm', import.meta.url);
+const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jspi.wasm', import.meta.url);
 
 // 예전 판 wasm 치우기: wasm 주소에 내용 해시가 들어가서 onnxruntime을 올리면 새 주소로 다시 받음 → 저장소에 남은 옛 파일(12~24MB)은 지움
 function prune() {
@@ -108,6 +110,8 @@ async function gpuUsable(prefer: Prefer): Promise<boolean> {
   if (prefer === 'cpu') return false;
   const nav = navigator as unknown as Nav, ua = nav.userAgentData;
   if (!nav.gpu) return false;
+  const wasm = WebAssembly as unknown as { Suspending?: unknown; promising?: unknown };
+  if (typeof wasm.Suspending !== 'function' || typeof wasm.promising !== 'function') return false;   // JSPI(GPU 판 onnxruntime이 씀)
   if (prefer === 'auto' && (!ua || ua.mobile || !ua.brands.some(b => b.brand === 'Chromium') || (nav.deviceMemory ?? 0) < 8)) return false;
   const a = await nav.gpu.requestAdapter().catch(() => null);
   return !!a && a.features.has('shader-f16') && !a.info?.isFallbackAdapter;
@@ -128,7 +132,7 @@ async function open(device: Device, onProgress: Progress): Promise<Model> {
     get(String(device === 'gpu' ? WASM_GPU : WASM_CPU)),
   ]);
 
-  const ort = device === 'gpu' ? await import('onnxruntime-web/webgpu') : await import('onnxruntime-web/wasm');
+  const ort = device === 'gpu' ? await import('onnxruntime-web/jspi') : await import('onnxruntime-web/wasm');
   // 스레드: 코어 수만큼(이 PC 16 → 2.3초, 8 → 2.7초, 4 → 4.0초). 교차 출처 격리가 없으면 onnxruntime이 1로 내림
   ort.env.wasm.numThreads = Math.min(16, navigator.hardwareConcurrency || 4);
   // 받아 둔 wasm은 blob 주소로 넘김(예전 라이브러리와 같은 방식). GPU 쪽 JS는 glue(mjs)를 안에 품고 있음

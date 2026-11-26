@@ -31,7 +31,7 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
   - 모델: fp32 176MB와 결과 같음. quint8 44MB는 배경과 색이 비슷한 사진에서 깨져서 안 씀
   - 라이브러리(@imgly/background-removal) 없이 직접 부름(`app/_lib/model.ts`): 받은 파일을 Cache Storage에 남겨 다음 방문부턴 망 없이, 설명 파일 한 번만. wasm은 빌드가 `_next/static/media`에 넣음(imgly CDN은 안 줄여서 12·23MB)
   - GPU(WebGPU): 크롬 계열 PC에서 f16 셰이더가 되면(1024 한 장 이 PC RTX 4060 0.1초 · CPU 16스레드 2.3초). 폰·사파리·파이어폭스는 실기기로 못 봐서 CPU — 주소에 `?gpu=1`/`?gpu=0`으로 시험. 열다가·지우다가 안 되면 CPU로
-    - 2026-11-26 1.21.0 → 1.31.1: GPU는 JSEP 대신 새 WebGPU 엔진(`.asyncify.wasm`). 이 PC에서 장당 속도·결과 그림은 같고, GPU로 모델 여는 시간만 약 0.5초 늘어남(PC는 인트로 동안 미리 열어서 안 보임). 저장소에 남은 옛 판 wasm은 열 때 지움
+    - 2026-11-26 1.21.0 → 1.31.1: GPU는 JSEP 대신 새 WebGPU 엔진의 JSPI 판(`onnxruntime-web/jspi`, `.jspi.wasm` 17.1MiB). 같은 엔진의 `onnxruntime-web/webgpu`(`.asyncify.wasm` 27.4MiB)는 Cloudflare 정적 파일 한도(한 파일 25MiB)를 넘어서 못 씀 — 빌드 뒤 `scripts/check-asset-size.mjs`가 25MiB 넘는 파일을 잡음. JSPI는 크롬 137+에만 있어서 없으면 CPU. 이 PC에서 결과 그림은 같고, GPU 장당 속도 같음·모델 열기 약 1.0 → 0.8초, CPU 약 20% 빨라짐. 저장소에 남은 옛 판 wasm은 열 때 지움
   - 줄이기·늘리기·합치기는 캔버스로(`app/_lib/pipeline.ts`) — 큰 사진도 빠름. 5천만 화소 넘는 사진은 줄여서(못 만들면 1,677만). 지운 결과와 물체 상자를 남겨 후처리(`app/_lib/post.ts`)가 다시 그림
   - 미리 받기: PC(마우스)는 인트로가 끝나고 쉴 때, 폰·데이터 절약은 ＋를 누르거나 끌어 올 때부터
   - 썸네일·상품 사진·스티커는 따로 캔버스 워커(`app/_lib/canvas.worker.ts`)가 — 큰 원본을 화면 스레드에서 풀고 그리면 멈춤
