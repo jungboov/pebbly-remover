@@ -19,9 +19,20 @@ const FILES = { model: '/models/isnet_fp16' } as const;
 // GPU는 1024 한 장 0.1초(이 PC RTX 4060, CPU 16스레드는 2.3초)라 되면 GPU로, 안 되면 CPU. wasm은 그쪽에 맞는 것 하나만.
 // wasm은 이 사이트에서(빌드가 _next/static/media에 넣음, 1년 보관): Cloudflare가 brotli로 줄여 보내서 CPU 12.7 → 2.3MB, GPU 23.9 → 5.0MB
 // (imgly CDN은 안 줄임). onnxruntime JS와 판도 꼭 맞음
+// GPU 파일: 1.21까지는 JSEP(.jsep.wasm), 1.31부터 'onnxruntime-web/webgpu'가 새 WebGPU 엔진(.asyncify.wasm)을 씀 — 판을 올리면 이 이름부터 확인
 const WASM_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', import.meta.url);
 const GLUE_CPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs', import.meta.url);
-const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm', import.meta.url);
+const WASM_GPU = new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm', import.meta.url);
+
+// 예전 판 wasm 치우기: wasm 주소에 내용 해시가 들어가서 onnxruntime을 올리면 새 주소로 다시 받음 → 저장소에 남은 옛 파일(12~24MB)은 지움
+function prune() {
+  if (typeof caches === 'undefined') return;
+  // 빌드 뒤 WASM_*는 webpack의 상대 주소 객체(href가 '/_next/…')라 저장소 키(절대 주소)와 맞추려면 절대 주소로 바꿔야 함
+  const keep = new Set([WASM_CPU, WASM_GPU].map(u => new URL(String(u), location.href).href));
+  caches.open(CACHE)
+    .then(c => c.keys().then(ks => Promise.all(ks.filter(r => r.url.endsWith('.wasm') && !keep.has(r.url)).map(r => c.delete(r)))))
+    .catch(() => {});
+}
 
 // 망에서 받기는 한 번에 6개까지: 22조각을 한꺼번에 받으면 느린 망(1.6Mbps)에서 몇 분 동안 한 조각도 안 끝나 진행이 0%에 멈추고
 // 2분쯤에 끊겼음(예전 판도 같음). 6개면 빠른 망에서도 느려지지 않음. 받는 대로 바이트 단위로 진행 표시
@@ -136,6 +147,7 @@ async function open(device: Device, onProgress: Progress): Promise<Model> {
   };
   // GPU는 처음 한 번 돌릴 때 셰이더를 만드느라 1.7초(그다음부터 0.1초) — 미리 열 때 빈 그림으로 한 번 돌려 둠
   if (device === 'gpu') await segment(new Float32Array(3 * SIZE * SIZE));
+  prune();
   return { device, segment };
 }
 

@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "file-saver": "2.0.5",
-    "jszip": "3.10.1",
+    "jszip": "3.10.2",
     "libheif-js": "1.23.5",
-    "next": "16.2.4",
-    "onnxruntime-web": "1.21.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "next": "16.4.6",
+    "onnxruntime-web": "1.31.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/file-saver": "2.0.7",
@@ -24,7 +24,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.4.6",
     "typescript": "5.9.3"
   }
 }
