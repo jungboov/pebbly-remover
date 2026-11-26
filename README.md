@@ -27,7 +27,7 @@ pebbly labs 넘버링 01(홀수 = 온라인). 예전 이름은 pixel remover(too
   - 확인 못 한 것: 실제 인쇄소 접수·별색 인식(VersaWorks), 크리컷이 SVG mm·안의 그림을 그대로 읽는지, 실루엣 무료판 DXF 단위, RGB PDF를 받는지(CMYK 변환 없음)
 - 아이폰 사진(HEIC·HEIF): 기기가 풀 수 있으면 그대로, 아니면 [libheif-js](https://github.com/catdad-experiments/libheif-js) 1.23.5(LGPL-3.0, libheif)로 풀어 JPG(0.95)로 바꾼 뒤 지움(`app/_lib/heic.ts`). HEIC가 들어올 때만 따로 받는 조각(wasm 1.46MB, 압축 약 0.4MB)
   - 시험해 보고 안 넣은 것(2026-11-04): BiRefNet_lite(MIT, 114MB) — 물건은 더 꽉 차게 잡지만 브라우저 onnxruntime(1.21·1.31)에서 GPU는 셰이더 버퍼 한도(16)·CPU는 메모리(4GB) 때문에 1024로 못 돌림. 주인공 하나만 남기기·확대해 한 번 더 지우기는 사진마다 들쭉날쭉해서 뺌
-- 지우기: ISNet fp16 모델(88MB — IMG.LY가 공개한 [@imgly/background-removal-data](https://github.com/imgly/background-removal-js) 1.7.0, 그쪽 CDN) + onnxruntime-web 1.31.1 wasm(이 사이트에서, Cloudflare brotli로 CPU 2.3MB · GPU 5.0MB)
+- 지우기: ISNet fp16 모델(88MB — IMG.LY가 공개한 [@imgly/background-removal-data](https://github.com/imgly/background-removal-js) 1.7.0, 그쪽 CDN) + onnxruntime-web 1.31.1 wasm(이 사이트에서, Cloudflare brotli로 CPU 3.6MB · GPU 4.1MB — 1.21.0 때는 2.3 · 5.0MB)
   - 모델: fp32 176MB와 결과 같음. quint8 44MB는 배경과 색이 비슷한 사진에서 깨져서 안 씀
   - 라이브러리(@imgly/background-removal) 없이 직접 부름(`app/_lib/model.ts`): 받은 파일을 Cache Storage에 남겨 다음 방문부턴 망 없이, 설명 파일 한 번만. wasm은 빌드가 `_next/static/media`에 넣음(imgly CDN은 안 줄여서 12·23MB)
   - GPU(WebGPU): 크롬 계열 PC에서 f16 셰이더가 되면(1024 한 장 이 PC RTX 4060 0.1초 · CPU 16스레드 2.3초). 폰·사파리·파이어폭스는 실기기로 못 봐서 CPU — 주소에 `?gpu=1`/`?gpu=0`으로 시험. 열다가·지우다가 안 되면 CPU로
